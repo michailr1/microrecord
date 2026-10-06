@@ -73,7 +73,7 @@ dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p
 dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -o publish/small
 ```
 
-Нужен .NET 9 SDK. GitHub Actions собирает обе версии на каждый push; тег `vX.Y.Z` публикует их в Releases.
+Нужен .NET 9 SDK. GitHub Actions собирает обе версии на каждый push. Релиз: тег `vX.Y.Z` или **Actions → Build MicroRecord → Run workflow** с полем `release_tag` — сборки и SHA256SUMS.txt появятся в Releases.
 
 Зависимости: [NAudio](https://github.com/naudio/NAudio) 3.x (WASAPI, process loopback, Media Foundation, микшер). Кодеки — встроенные в Windows.
 
