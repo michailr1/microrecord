@@ -33,8 +33,8 @@ Zoom, Teams, Meet, Telegram, звонок в браузере — неважно
 
 | Файл | Размер | Когда выбирать |
 |---|---|---|
-| `MicroRecord-<версия>-win-x64.exe` | ~65 МБ | Работает сразу, внутри всё нужное. |
-| `MicroRecord-<версия>-win-x64-net9.exe` | ~3 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0); если нет — Windows предложит его скачать. |
+| `MicroRecord-<версия>-win-x64.exe` | ~50 МБ | Работает сразу, внутри всё нужное. |
+| `MicroRecord-<версия>-win-x64-net9.exe` | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0); если нет — Windows предложит его скачать. |
 
 **Требования:** Windows 10 версии 2004 (сборка 19041) или новее, x64.
 

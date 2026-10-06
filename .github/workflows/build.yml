@@ -71,8 +71,8 @@ jobs:
 
           | Файл | Размер | Когда выбирать |
           |---|---|---|
-          | **MicroRecord-$v-win-x64.exe** | большой | Работает сразу на любом Windows 10 2004+ / 11 x64. Ничего ставить не нужно. |
-          | **MicroRecord-$v-win-x64-net9.exe** | маленький | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
+          | **MicroRecord-$v-win-x64.exe** | ~50 МБ | Работает сразу на любом Windows 10 2004+ / 11 x64. Ничего ставить не нужно. |
+          | **MicroRecord-$v-win-x64-net9.exe** | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
 
           Положите EXE в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
           "@
