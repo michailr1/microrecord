@@ -1,0 +1,40 @@
+name: Build MicroRecord
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore MicroRecord.csproj
+
+      - name: Publish self-contained single EXE
+        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+
+      - name: Show output
+        shell: pwsh
+        run: |
+          Get-ChildItem publish | Format-Table Name,Length
+          Get-FileHash publish\MicroRecord.exe -Algorithm SHA256
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicroRecord-v0.5-win-x64
+          path: publish/MicroRecord.exe
+          if-no-files-found: error
