@@ -63,6 +63,45 @@ jobs:
           # Unversioned names keep https://github.com/<repo>/releases/latest/download/<name> stable (install.ps1 relies on it).
           Copy-Item publish/full/MicroRecord.exe dist/MicroRecord-win-x64.exe
           Copy-Item publish/small/MicroRecord.exe dist/MicroRecord-win-x64-net9.exe
+
+      # Code signing via SignPath Foundation (see CODE_SIGNING.md). Runs for releases only, and only once
+      # the repository variable SIGNPATH_ORGANIZATION_ID and the secret SIGNPATH_API_TOKEN are configured;
+      # until then releases are published unsigned.
+      - name: Upload unsigned EXEs for signing
+        id: upload-unsigned
+        if: steps.version.outputs.tag != '' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-${{ steps.version.outputs.version }}
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        if: steps.version.outputs.tag != '' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'microrecord' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || 'initial' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Release signing requests are approved by hand in SignPath; leave time for that.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+
+      - name: Use signed EXEs
+        if: steps.version.outputs.tag != '' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          Copy-Item signed/*.exe dist/ -Force
+          Get-AuthenticodeSignature dist/*.exe | Format-Table Path, Status, @{ n = 'Signer'; e = { $_.SignerCertificate.Subject } } -AutoSize
+          if (Get-AuthenticodeSignature dist/*.exe | Where-Object Status -ne 'Valid') { throw 'A signed EXE has no valid signature.' }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
           Get-ChildItem dist | ForEach-Object { "{0,-40} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
           Get-FileHash dist/*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist/SHA256SUMS.txt
           Get-Content dist/SHA256SUMS.txt
@@ -96,7 +135,12 @@ jobs:
 
           Или скачайте EXE ниже, положите в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
 
-          **«Система Windows защитила ваш компьютер»** — программа пока без цифровой подписи. Нажмите «Подробнее» → «Выполнить в любом случае». Если Windows просит пароль администратора: до запуска откройте свойства EXE и отметьте «Разблокировать» (или `Unblock-File` в PowerShell).
+          **«Система Windows защитила ваш компьютер»** — нажмите «Подробнее» → «Выполнить в любом случае». Если Windows просит пароль администратора: до запуска откройте свойства EXE и отметьте «Разблокировать» (или `Unblock-File` в PowerShell).
           "@
+          $notes += if ((Get-AuthenticodeSignature dist/MicroRecord-win-x64.exe).Status -eq 'Valid') {
+            "`n`nФайлы подписаны: free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org). [Политика подписи](https://github.com/michailr1/microrecord/blob/main/CODE_SIGNING.md)."
+          } else {
+            "`n`nЭта версия без цифровой подписи."
+          }
           # --target creates the tag on this commit when it does not exist yet (manual runs).
           gh release create "${{ steps.version.outputs.tag }}" dist/* --target "${{ github.sha }}" --title "MicroRecord $v" --notes "$notes" --generate-notes

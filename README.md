@@ -97,6 +97,12 @@ dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -
 
 Зависимости: [NAudio](https://github.com/naudio/NAudio) 3.x (WASAPI, process loopback, Media Foundation, микшер). Кодеки — встроенные в Windows.
 
+## Подпись кода и приватность
+
+Политика подписи кода и приватности: [CODE_SIGNING.md](CODE_SIGNING.md). Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org) (после одобрения заявки; до этого релизы публикуются без подписи).
+
+MicroRecord не передаёт никакие данные по сети: записи, настройки и лог остаются на компьютере.
+
 ## Лицензия
 
 [MIT](LICENSE) — свободно используйте, изменяйте и распространяйте, сохраняя указание авторства. Программа предоставляется «как есть», без гарантий.
