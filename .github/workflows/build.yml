@@ -82,6 +82,8 @@ jobs:
           | **MicroRecord-$v-win-x64-net9.exe** | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
 
           Положите EXE в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
+
+          **«Система Windows защитила ваш компьютер»** — программа пока без цифровой подписи. Нажмите «Подробнее» → «Выполнить в любом случае». Если Windows просит пароль администратора: до запуска откройте свойства EXE и отметьте «Разблокировать» (или `Unblock-File` в PowerShell).
           "@
           # --target creates the tag on this commit when it does not exist yet (manual runs).
           gh release create "${{ steps.version.outputs.tag }}" dist/* --target "${{ github.sha }}" --title "MicroRecord $v" --notes "$notes" --generate-notes
