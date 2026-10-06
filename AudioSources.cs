@@ -82,7 +82,12 @@ internal static class AudioSourceFactory
             .WithFormat(ProcessLoopbackFormat)))),
     ]);
 
-    public static IAudioSource OpenMicrophone(Action<string> log) => OpenFirst("mic", log,
+    public static IAudioSource OpenMicrophone(AppSettings settings, Action<string> log)
+    {
+        var browser = ("default browser tab getUserMedia", (Func<IAudioSource>)(() =>
+            new BrowserMicSource(log, settings.BrowserAutoGain, settings.BrowserNoiseSuppression)));
+        if (settings.MicMode == MicMode.BrowserOnly) return OpenFirst("mic", log, [browser]);
+        return OpenFirst("mic", log,
     [
 #pragma warning disable CS0618
         ("WASAPI capture on default capture endpoint", () => new WaveInSource("WASAPI capture", new WasapiCapture())),
@@ -96,8 +101,9 @@ internal static class AudioSourceFactory
         })),
         // Last resort: the user's own browser (trusted by endpoint security) opens the mic in a tab
         // and streams it to us over localhost. Embedded WebView2 did not help: it runs as our child process.
-        ("default browser tab getUserMedia", () => new BrowserMicSource(log)),
+        browser,
     ]);
+    }
 
     private static WasapiRecorder BuildAsync(WasapiRecorderBuilder builder) =>
         // ActivateAudioInterfaceAsync must not complete back onto the WinForms STA thread we'd be blocking.

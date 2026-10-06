@@ -39,6 +39,13 @@ internal sealed class LevelMeter
         }
     }
 
+    public string Name => name;
+
+    /// <summary>Peak of everything seen so far, e.g. "-12.3 dBFS".</summary>
+    public string TotalPeakText { get { lock (gate) return Db(totalPeak); } }
+
+    public long TotalBytes { get { lock (gate) return totalBytes; } }
+
     public void LogTotal()
     {
         lock (gate) log($"level {name} total: {totalBytes} bytes ({totalBytes / Math.Max(1, format.AverageBytesPerSecond):0.0}s of audio), peak {Db(totalPeak)}");

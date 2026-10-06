@@ -33,7 +33,15 @@ internal sealed class BrowserMicSource : IAudioSource
     private WaveFormat? waveFormat;
     private int port;
 
-    public BrowserMicSource(Action<string> log) => this.log = log;
+    private readonly bool autoGain;
+    private readonly bool noiseSuppression;
+
+    public BrowserMicSource(Action<string> log, bool autoGain, bool noiseSuppression)
+    {
+        this.log = log;
+        this.autoGain = autoGain;
+        this.noiseSuppression = noiseSuppression;
+    }
 
     public string Name => "browser tab getUserMedia";
     public WaveFormat WaveFormat => waveFormat ?? throw new InvalidOperationException("Not started.");
@@ -55,7 +63,7 @@ internal sealed class BrowserMicSource : IAudioSource
         port = ((IPEndPoint)listener.LocalEndpoint).Port;
         _ = Task.Run(AcceptLoop);
 
-        var url = $"http://127.0.0.1:{port}/?t={token}";
+        var url = $"http://127.0.0.1:{port}/?t={token}&agc={(autoGain ? 1 : 0)}&ns={(noiseSuppression ? 1 : 0)}";
         log($"mic: opening {url} in the default browser");
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
@@ -84,7 +92,7 @@ internal sealed class BrowserMicSource : IAudioSource
             var stream = client.GetStream();
             var (path, headers) = await ReadRequestHead(stream);
             var query = path.Contains('?') ? path[(path.IndexOf('?') + 1)..] : "";
-            var authorized = query == "t=" + token;
+            var authorized = query.Split('&').Contains("t=" + token);
 
             if (authorized && path.StartsWith("/ws?") && headers.TryGetValue("sec-websocket-key", out var key)
                 && headers.TryGetValue("origin", out var origin) && origin == $"http://127.0.0.1:{port}")
@@ -208,8 +216,8 @@ internal sealed class BrowserMicSource : IAudioSource
     }
 
     // getUserMedia -> AudioWorklet -> 16-bit mono PCM in ~100 ms binary WebSocket frames.
-    // Browser AGC + noise suppression stay on (as in a meeting tab): raw headset mics such as the
-    // Logitech H340 peak around -45 dBFS, which is inaudible in the mix. Echo cancellation is off.
+    // AGC / noise suppression follow the settings (on by default, as in a meeting tab): raw headset
+    // mics such as the Logitech H340 peak around -45 dBFS without AGC. Echo cancellation is off.
     private const string PageHtml = """
 <!doctype html>
 <meta charset="utf-8">
@@ -222,7 +230,8 @@ internal sealed class BrowserMicSource : IAudioSource
 <p>Не закрывайте эту вкладку, пока идёт запись. Остановка — Ctrl+Alt+R.</p>
 <script>
 const status = t => document.getElementById('s').textContent = t;
-const token = new URLSearchParams(location.search).get('t');
+const params = new URLSearchParams(location.search);
+const token = params.get('t');
 const ws = new WebSocket(`ws://127.0.0.1:${location.port}/ws?t=${token}`);
 ws.binaryType = 'arraybuffer';
 let ctx, stream;
@@ -249,7 +258,7 @@ ws.onmessage = e => { if (e.data === 'stop') stopCapture('Запись оста�
 ws.onclose = () => stopCapture('Соединение с MicroRecord закрыто. Вкладку можно закрыть.');
 ws.onopen = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: params.get('ns') === '1', autoGainControl: params.get('agc') === '1', channelCount: 1 } });
     ctx = new AudioContext();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' })));
     const node = new AudioWorkletNode(ctx, 'pcm', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });

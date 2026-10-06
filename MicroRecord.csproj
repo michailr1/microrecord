@@ -13,13 +13,19 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <!-- .NET 9 marks apps CET shadow-stack compatible by default; disabled to rule it out as the cause of
-         process-wide IAudioClient::Initialize E_INVALIDARG. -->
-    <CETCompat>false</CETCompat>
+    <Version>1.0.0</Version>
+    <Product>MicroRecord</Product>
+    <Description>Portable Windows meeting recorder: microphone + system audio to one file with a hotkey.</Description>
+    <ApplicationIcon>Assets\MicroRecord.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="3.1.0" />
     <PackageReference Include="NAudio.Extras" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\MicroRecord.ico" LogicalName="MicroRecord.ico" />
+    <EmbeddedResource Include="Assets\Recording.ico" LogicalName="Recording.ico" />
   </ItemGroup>
 </Project>
