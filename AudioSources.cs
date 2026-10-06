@@ -77,10 +77,20 @@ internal static class AudioSourceFactory
         // Captures every process except MicroRecord itself through the process-loopback virtual
         // device (Windows 10 2004+). It does not open the headset endpoint at all, so it sidesteps
         // endpoint/driver-specific Initialize failures.
-        ("process loopback (all apps except MicroRecord)", () => new RecorderSource("process loopback", BuildAsync(new WasapiRecorderBuilder()
-            .WithProcessLoopback((uint)Environment.ProcessId, ProcessLoopbackMode.ExcludeTargetProcessTree)
-            .WithFormat(ProcessLoopbackFormat)))),
+        ("process loopback (all apps except MicroRecord)", OpenProcessLoopback),
     ]);
+
+    /// <summary>System audio from every process except this one, via the process-loopback virtual device.</summary>
+    public static IAudioSource OpenProcessLoopback()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            throw new PlatformNotSupportedException("Process loopback needs Windows 10 version 2004 or later.");
+        }
+        return new RecorderSource("process loopback", BuildAsync(new WasapiRecorderBuilder()
+            .WithProcessLoopback((uint)Environment.ProcessId, ProcessLoopbackMode.ExcludeTargetProcessTree)
+            .WithFormat(ProcessLoopbackFormat)));
+    }
 
     public static IAudioSource OpenMicrophone(AppSettings settings, Action<string> log)
     {

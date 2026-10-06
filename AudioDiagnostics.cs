@@ -37,10 +37,7 @@ internal static class AudioDiagnostics
 
         Safe(log, "activate-default", () => ProbeActivatedDefault(log, DataFlow.Render));
         Safe(log, "activate-default", () => ProbeActivatedDefault(log, DataFlow.Capture));
-        ProbeSource(log, "process loopback (exclude self) 48000Hz float", () => new RecorderSource("process loopback",
-            Task.Run(new WasapiRecorderBuilder()
-                .WithProcessLoopback((uint)Environment.ProcessId, ProcessLoopbackMode.ExcludeTargetProcessTree)
-                .WithFormat(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2)).BuildAsync).GetAwaiter().GetResult()));
+        ProbeSource(log, "process loopback (exclude self) 48000Hz float", AudioSourceFactory.OpenProcessLoopback);
         ProbeSource(log, "WinMM waveIn 44100Hz/16bit/mono", () => new WaveInSource("WinMM waveIn", new WaveIn { WaveFormat = new WaveFormat(44100, 16, 1) }));
         log("===== audio diagnostics end =====");
     }
