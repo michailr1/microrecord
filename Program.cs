@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using NAudio.CoreAudioApi;
 using NAudio.Extras;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -31,7 +32,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
         Directory.CreateDirectory(outputDir);
         logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.5 started (NAudio backend)");
+        Log("MicroRecord v0.6 started (NAudio legacy WASAPI backend)");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
@@ -112,10 +113,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         }
     }
 
-    private void OpenFolder()
-    {
-        Process.Start(new ProcessStartInfo(outputDir) { UseShellExecute = true });
-    }
+    private void OpenFolder() => Process.Start(new ProcessStartInfo(outputDir) { UseShellExecute = true });
 
     private void ExitApp()
     {
@@ -133,10 +131,7 @@ internal sealed class MicroRecordContext : ApplicationContext
 
     private void Log(string message)
     {
-        try
-        {
-            File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}");
-        }
+        try { File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
         catch { }
     }
 
@@ -152,8 +147,8 @@ internal sealed class MicroRecordContext : ApplicationContext
 internal sealed class RecordingSession : IDisposable
 {
     private readonly Action<string> log;
-    private WasapiRecorder? micRecorder;
-    private WasapiRecorder? systemRecorder;
+    private WasapiCapture? micRecorder;
+    private WasapiLoopbackCapture? systemRecorder;
     private RealtimeCaptureMixer? mixer;
     private WaveFileWriter? writer;
     private CancellationTokenSource? pumpCts;
@@ -173,11 +168,13 @@ internal sealed class RecordingSession : IDisposable
     {
         if (started) throw new InvalidOperationException("Recording already started.");
 
-        micRecorder = new WasapiRecorderBuilder().Build();
-        systemRecorder = new WasapiRecorderBuilder()
-            .WithLoopbackCapture()
-            .WithPollingSync()
-            .Build();
+#pragma warning disable CS0618
+        // The newer NAudio 3 WasapiRecorder path produced E_INVALIDARG on this USB headset.
+        // The mature legacy classes use a different initialization path, polling sync and
+        // AutoConvertPcm/SrcDefaultQuality flags, which is more tolerant of USB audio drivers.
+        micRecorder = new WasapiCapture();
+        systemRecorder = new WasapiLoopbackCapture();
+#pragma warning restore CS0618
 
         log($"mic format: {micRecorder.WaveFormat}");
         log($"system format: {systemRecorder.WaveFormat}");
@@ -189,40 +186,50 @@ internal sealed class RecordingSession : IDisposable
         var micInput = mixer.AddInput(micRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
         var systemInput = mixer.AddInput(systemRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
 
-        micRecorder.DataAvailable += (data, _, _, _) => micInput.AddSamples(data);
-        systemRecorder.DataAvailable += (data, _, _, _) => systemInput.AddSamples(data);
+        micRecorder.DataAvailable += (_, a) => micInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
+        systemRecorder.DataAvailable += (_, a) => systemInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
 
         writer = new WaveFileWriter(OutputPath, mixer.WaveFormat);
         pumpCts = new CancellationTokenSource();
         mixer.Start();
-
         pumpTask = Task.Run(() => PumpAudio(pumpCts.Token));
 
-        // Start loopback first so we don't miss the remote side at the beginning.
-        systemRecorder.StartRecording();
-        micRecorder.StartRecording();
-        started = true;
+        try
+        {
+            log("starting system loopback...");
+            systemRecorder.StartRecording();
+            log("system loopback started OK");
+
+            log("starting microphone...");
+            micRecorder.StartRecording();
+            log("microphone started OK");
+
+            started = true;
+        }
+        catch
+        {
+            try { systemRecorder?.StopRecording(); } catch { }
+            try { micRecorder?.StopRecording(); } catch { }
+            pumpCts?.Cancel();
+            try { pumpTask?.Wait(TimeSpan.FromSeconds(1)); } catch { }
+            writer?.Dispose();
+            writer = null;
+            try { if (File.Exists(OutputPath) && new FileInfo(OutputPath).Length <= 64) File.Delete(OutputPath); } catch { }
+            throw;
+        }
     }
 
     private void PumpAudio(CancellationToken token)
     {
         if (mixer == null || writer == null) return;
         var buffer = new float[Math.Max(4096, mixer.WaveFormat.SampleRate * mixer.WaveFormat.Channels / 10)];
-
         while (!token.IsCancellationRequested)
         {
             var read = mixer.Read(buffer, 0, buffer.Length);
-            if (read > 0)
-            {
-                writer.WriteSamples(buffer, 0, read);
-            }
-            else
-            {
-                Thread.Sleep(5);
-            }
+            if (read > 0) writer.WriteSamples(buffer, 0, read);
+            else Thread.Sleep(5);
         }
 
-        // Small final catch-up without free-running into endless silence.
         var deadline = Stopwatch.StartNew();
         while (deadline.ElapsedMilliseconds < 120)
         {
@@ -237,32 +244,26 @@ internal sealed class RecordingSession : IDisposable
         if (!started || stopped) return OutputPath;
         stopped = true;
 
-        // Stop sources first; let already-buffered capture data reach the mixer.
         try { micRecorder?.StopRecording(); } catch (Exception ex) { log("mic stop warning: " + ex.Message); }
         try { systemRecorder?.StopRecording(); } catch (Exception ex) { log("system stop warning: " + ex.Message); }
-        Thread.Sleep(80);
+        Thread.Sleep(120);
 
         pumpCts?.Cancel();
         try { pumpTask?.Wait(TimeSpan.FromSeconds(3)); } catch (Exception ex) { log("pump stop warning: " + ex.Message); }
 
         writer?.Dispose();
         writer = null;
-
         micRecorder?.Dispose();
         micRecorder = null;
         systemRecorder?.Dispose();
         systemRecorder = null;
-
         return OutputPath;
     }
 
     public void Dispose()
     {
-        try
-        {
-            if (started && !stopped) Stop();
-        }
-        catch { }
+        try { if (started && !stopped) Stop(); } catch { }
+        try { pumpCts?.Cancel(); } catch { }
         try { pumpCts?.Dispose(); } catch { }
         try { writer?.Dispose(); } catch { }
         try { micRecorder?.Dispose(); } catch { }
@@ -271,13 +272,7 @@ internal sealed class RecordingSession : IDisposable
 }
 
 [Flags]
-internal enum HotkeyModifiers : uint
-{
-    Alt = 0x0001,
-    Control = 0x0002,
-    Shift = 0x0004,
-    Win = 0x0008
-}
+internal enum HotkeyModifiers : uint { Alt = 0x0001, Control = 0x0002, Shift = 0x0004, Win = 0x0008 }
 
 internal sealed class HotkeyWindow : NativeWindow, IDisposable
 {
@@ -299,11 +294,7 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmHotkey && m.WParam.ToInt32() == registeredId)
-        {
-            callback();
-            return;
-        }
+        if (m.Msg == WmHotkey && m.WParam.ToInt32() == registeredId) { callback(); return; }
         base.WndProc(ref m);
     }
 
@@ -318,7 +309,6 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
