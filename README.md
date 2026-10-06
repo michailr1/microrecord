@@ -29,8 +29,12 @@ Zoom, Teams, Meet, Telegram, звонок в браузере — неважно
 
 ## Установка
 
-1. Скачайте `MicroRecord.exe` из последней сборки ([Actions → Build MicroRecord](https://github.com/michailr1/microrecord/actions/workflows/build.yml) → артефакт `MicroRecord-win-x64`).
-2. Положите в любую папку и запустите. Установка и права администратора не нужны.
+Скачайте EXE со страницы [Releases](https://github.com/michailr1/microrecord/releases/latest), положите в любую папку и запустите. Установка и права администратора не нужны.
+
+| Файл | Размер | Когда выбирать |
+|---|---|---|
+| `MicroRecord-<версия>-win-x64.exe` | ~65 МБ | Работает сразу, внутри всё нужное. |
+| `MicroRecord-<версия>-win-x64-net9.exe` | ~3 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0); если нет — Windows предложит его скачать. |
 
 **Требования:** Windows 10 версии 2004 (сборка 19041) или новее, x64.
 
@@ -63,10 +67,13 @@ Zoom, Teams, Meet, Telegram, звонок в браузере — неважно
 ## Сборка
 
 ```
-dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+# полная версия (среда .NET внутри, сжатая)
+dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:EnableCompressionInSingleFile=true -o publish/full
+# маленькая версия (нужен .NET 9 Desktop Runtime)
+dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -o publish/small
 ```
 
-Нужен .NET 9 SDK. GitHub Actions собирает тот же самый single-file `.exe` на каждый push.
+Нужен .NET 9 SDK. GitHub Actions собирает обе версии на каждый push; тег `vX.Y.Z` публикует их в Releases.
 
 Зависимости: [NAudio](https://github.com/naudio/NAudio) 3.x (WASAPI, process loopback, Media Foundation, микшер). Кодеки — встроенные в Windows.
 

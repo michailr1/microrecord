@@ -8,7 +8,7 @@
     <AssemblyName>MicroRecord</AssemblyName>
     <RootNamespace>MicroRecord</RootNamespace>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
+    <!-- Self-contained vs framework-dependent is chosen per publish (see .github/workflows/build.yml). -->
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
