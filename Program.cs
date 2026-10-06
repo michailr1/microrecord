@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using NAudio.CoreAudioApi;
 using NAudio.Extras;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -32,11 +31,12 @@ internal sealed class MicroRecordContext : ApplicationContext
         outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
         Directory.CreateDirectory(outputDir);
         logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.6 started (NAudio legacy WASAPI backend)");
+        Log("MicroRecord v0.7 started (WASAPI with process-loopback / WinMM fallbacks)");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
         menu.Items.Add("Open recordings folder", null, (_, _) => OpenFolder());
+        menu.Items.Add("Diagnose audio (writes log)", null, (_, _) => RunDiagnostics());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
 
@@ -75,6 +75,10 @@ internal sealed class MicroRecordContext : ApplicationContext
             tray.Text = "MicroRecord — RECORDING (Ctrl+Alt+R to stop)";
             tray.ShowBalloonTip(1200, "MicroRecord", "Recording started", ToolTipIcon.Info);
             Log($"recording started: {session.OutputPath}");
+            if (session.Warning != null)
+            {
+                tray.ShowBalloonTip(4000, "MicroRecord — partial recording", session.Warning, ToolTipIcon.Warning);
+            }
         }
         catch (Exception ex)
         {
@@ -113,6 +117,21 @@ internal sealed class MicroRecordContext : ApplicationContext
         }
     }
 
+    private void RunDiagnostics()
+    {
+        if (session != null)
+        {
+            MessageBox.Show("Stop the recording before running diagnostics.", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        tray.ShowBalloonTip(1500, "MicroRecord", "Running audio diagnostics...", ToolTipIcon.Info);
+        Task.Run(() => AudioDiagnostics.Run(Log)).ContinueWith(_ =>
+        {
+            tray.ShowBalloonTip(2500, "MicroRecord", "Diagnostics written to microrecord.log", ToolTipIcon.Info);
+            Process.Start(new ProcessStartInfo(logPath) { UseShellExecute = true });
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
     private void OpenFolder() => Process.Start(new ProcessStartInfo(outputDir) { UseShellExecute = true });
 
     private void ExitApp()
@@ -129,10 +148,15 @@ internal sealed class MicroRecordContext : ApplicationContext
         ExitThread();
     }
 
+    private readonly object logLock = new();
+
     private void Log(string message)
     {
-        try { File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
-        catch { }
+        lock (logLock)
+        {
+            try { File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
+            catch { }
+        }
     }
 
     protected override void ExitThreadCore()
@@ -147,8 +171,8 @@ internal sealed class MicroRecordContext : ApplicationContext
 internal sealed class RecordingSession : IDisposable
 {
     private readonly Action<string> log;
-    private WasapiCapture? micRecorder;
-    private WasapiLoopbackCapture? systemRecorder;
+    private IAudioSource? micSource;
+    private IAudioSource? systemSource;
     private RealtimeCaptureMixer? mixer;
     private WaveFileWriter? writer;
     private CancellationTokenSource? pumpCts;
@@ -157,6 +181,9 @@ internal sealed class RecordingSession : IDisposable
     private bool stopped;
 
     public string OutputPath { get; }
+
+    /// <summary>Set when only one of mic / system audio could be opened.</summary>
+    public string? Warning { get; private set; }
 
     public RecordingSession(string outputDir, Action<string> logger)
     {
@@ -168,55 +195,34 @@ internal sealed class RecordingSession : IDisposable
     {
         if (started) throw new InvalidOperationException("Recording already started.");
 
-#pragma warning disable CS0618
-        // The newer NAudio 3 WasapiRecorder path produced E_INVALIDARG on this USB headset.
-        // The mature legacy classes use a different initialization path, polling sync and
-        // AutoConvertPcm/SrcDefaultQuality flags, which is more tolerant of USB audio drivers.
-        micRecorder = new WasapiCapture();
-        systemRecorder = new WasapiLoopbackCapture();
-#pragma warning restore CS0618
+        // Each side walks its own chain of capture paths (see AudioSourceFactory) and is started
+        // before the mixer input exists, so a failure never leaves a dangling input behind.
+        Exception? systemError = null, micError = null;
+        try { systemSource = AudioSourceFactory.OpenSystem(log); } catch (Exception ex) { systemError = ex; }
+        try { micSource = AudioSourceFactory.OpenMicrophone(log); } catch (Exception ex) { micError = ex; }
 
-        log($"mic format: {micRecorder.WaveFormat}");
-        log($"system format: {systemRecorder.WaveFormat}");
+        if (systemSource == null && micSource == null)
+        {
+            throw new InvalidOperationException($"Neither system audio nor microphone could be opened.{Environment.NewLine}{systemError?.Message}{Environment.NewLine}{micError?.Message}{Environment.NewLine}Run tray menu → Diagnose audio and send microrecord.log.");
+        }
+        if (systemSource == null) Warning = "System audio unavailable — recording microphone only.";
+        if (micSource == null) Warning = "Microphone unavailable — recording system audio only.";
 
-        var targetRate = Math.Max(44100, Math.Max(micRecorder.WaveFormat.SampleRate, systemRecorder.WaveFormat.SampleRate));
-        var targetFormat = WaveFormat.CreateIeeeFloatWaveFormat(targetRate, 2);
-        mixer = new RealtimeCaptureMixer(targetFormat);
-
-        var micInput = mixer.AddInput(micRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
-        var systemInput = mixer.AddInput(systemRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
-
-        micRecorder.DataAvailable += (_, a) => micInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
-        systemRecorder.DataAvailable += (_, a) => systemInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
+        var sources = new[] { systemSource, micSource }.OfType<IAudioSource>().ToArray();
+        var targetRate = Math.Max(44100, sources.Max(s => s.WaveFormat.SampleRate));
+        mixer = new RealtimeCaptureMixer(WaveFormat.CreateIeeeFloatWaveFormat(targetRate, 2));
+        foreach (var source in sources)
+        {
+            var input = mixer.AddInput(source.WaveFormat, p => new VolumeSampleProvider(p) { Volume = sources.Length > 1 ? 0.5f : 1f });
+            source.Sink = data => input.AddSamples(data);
+        }
 
         writer = new WaveFileWriter(OutputPath, mixer.WaveFormat);
         pumpCts = new CancellationTokenSource();
         mixer.Start();
         pumpTask = Task.Run(() => PumpAudio(pumpCts.Token));
-
-        try
-        {
-            log("starting system loopback...");
-            systemRecorder.StartRecording();
-            log("system loopback started OK");
-
-            log("starting microphone...");
-            micRecorder.StartRecording();
-            log("microphone started OK");
-
-            started = true;
-        }
-        catch
-        {
-            try { systemRecorder?.StopRecording(); } catch { }
-            try { micRecorder?.StopRecording(); } catch { }
-            pumpCts?.Cancel();
-            try { pumpTask?.Wait(TimeSpan.FromSeconds(1)); } catch { }
-            writer?.Dispose();
-            writer = null;
-            try { if (File.Exists(OutputPath) && new FileInfo(OutputPath).Length <= 64) File.Delete(OutputPath); } catch { }
-            throw;
-        }
+        started = true;
+        log($"recording via system=[{systemSource?.Name ?? "none"}] mic=[{micSource?.Name ?? "none"}]");
     }
 
     private void PumpAudio(CancellationToken token)
@@ -244,8 +250,8 @@ internal sealed class RecordingSession : IDisposable
         if (!started || stopped) return OutputPath;
         stopped = true;
 
-        try { micRecorder?.StopRecording(); } catch (Exception ex) { log("mic stop warning: " + ex.Message); }
-        try { systemRecorder?.StopRecording(); } catch (Exception ex) { log("system stop warning: " + ex.Message); }
+        try { micSource?.Stop(); } catch (Exception ex) { log("mic stop warning: " + ex.Message); }
+        try { systemSource?.Stop(); } catch (Exception ex) { log("system stop warning: " + ex.Message); }
         Thread.Sleep(120);
 
         pumpCts?.Cancel();
@@ -253,10 +259,10 @@ internal sealed class RecordingSession : IDisposable
 
         writer?.Dispose();
         writer = null;
-        micRecorder?.Dispose();
-        micRecorder = null;
-        systemRecorder?.Dispose();
-        systemRecorder = null;
+        micSource?.Dispose();
+        micSource = null;
+        systemSource?.Dispose();
+        systemSource = null;
         return OutputPath;
     }
 
@@ -266,8 +272,8 @@ internal sealed class RecordingSession : IDisposable
         try { pumpCts?.Cancel(); } catch { }
         try { pumpCts?.Dispose(); } catch { }
         try { writer?.Dispose(); } catch { }
-        try { micRecorder?.Dispose(); } catch { }
-        try { systemRecorder?.Dispose(); } catch { }
+        try { micSource?.Dispose(); } catch { }
+        try { systemSource?.Dispose(); } catch { }
     }
 }
 

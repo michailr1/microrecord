@@ -4,7 +4,11 @@ Minimal local Windows meeting audio recorder.
 
 - `Ctrl+Alt+R` — start/stop recording
 - tray icon with recording state
-- captures default microphone and default Windows output (WASAPI loopback)
+- captures default microphone and default Windows output; each side falls back through several capture paths:
+  - system audio: WASAPI endpoint loopback → process loopback (all apps except MicroRecord, Windows 10 2004+)
+  - microphone: WASAPI endpoint capture → WASAPI default-device routing (`ActivateAudioInterfaceAsync`) → WinMM `waveIn`
+- if only one side opens, records that side and shows a warning
+- tray menu → **Diagnose audio** writes a capture matrix (every endpoint × stream flags × STA/MTA, plus the fallback paths) to `Documents\MicroRecord\microrecord.log`
 - writes temporary tracks locally, then mixes them into one WAV
 - no network, cloud, transcription, or telemetry
 
