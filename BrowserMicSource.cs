@@ -20,6 +20,8 @@ namespace MicroRecord;
 internal sealed class BrowserMicSource : IAudioSource
 {
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(60); // time for the user to click "Allow"
+    // Fixed port => stable origin, so "allow on every visit" in the browser sticks between recordings.
+    private const int PreferredPort = 47123;
     private const string WebSocketGuid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     private readonly Action<string> log;
@@ -39,8 +41,17 @@ internal sealed class BrowserMicSource : IAudioSource
 
     public void Start()
     {
-        listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
+        try
+        {
+            listener = new TcpListener(IPAddress.Loopback, PreferredPort);
+            listener.Start();
+        }
+        catch (SocketException)
+        {
+            log($"mic: port {PreferredPort} busy, using a random port (the browser will ask for permission again)");
+            listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+        }
         port = ((IPEndPoint)listener.LocalEndpoint).Port;
         _ = Task.Run(AcceptLoop);
 
