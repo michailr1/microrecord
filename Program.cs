@@ -16,8 +16,23 @@ internal static class Program
             MessageBox.Show("MicroRecord уже запущен (значок в трее).", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+        RemoveDownloadMark();
         ApplicationConfiguration.Initialize();
         Application.Run(new MicroRecordContext());
+    }
+
+    /// <summary>
+    /// Drops the "downloaded from the Internet" mark (Zone.Identifier stream) from our own EXE, so once
+    /// SmartScreen has been passed it does not ask again, also for copies of this file.
+    /// </summary>
+    private static void RemoveDownloadMark()
+    {
+        try
+        {
+            var mark = Environment.ProcessPath + ":Zone.Identifier";
+            if (File.Exists(mark)) File.Delete(mark);
+        }
+        catch { } // read-only location or policy — harmless, SmartScreen just asks again next time
     }
 
     public static string Version => typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "?";
