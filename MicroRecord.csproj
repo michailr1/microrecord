@@ -14,7 +14,7 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <!-- .NET 9 marks apps CET shadow-stack compatible by default; disabled to rule it out as the cause of
-         process-wide IAudioClient::Initialize E_INVALIDARG (see README troubleshooting). -->
+         process-wide IAudioClient::Initialize E_INVALIDARG. -->
     <CETCompat>false</CETCompat>
   </PropertyGroup>
 
