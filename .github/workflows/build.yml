@@ -5,6 +5,11 @@ on:
     branches: [ main, 'claude/**' ]
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Publish a GitHub Release with this tag (e.g. v1.0.0); leave empty for a plain build'
+        required: false
+        default: ''
 
 jobs:
   build-windows:
@@ -25,10 +30,12 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          # Tag v1.2.3 -> 1.2.3; other builds use the version from the csproj.
-          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart('v') }
+          # Tag v1.2.3 (pushed, or given to a manual run) -> 1.2.3; other builds use the version from the csproj.
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ inputs.release_tag }}" }
+          if ($tag) { $v = $tag.TrimStart('v') }
           else { $v = ([xml](Get-Content MicroRecord.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1 }
           "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Restore
         run: dotnet restore MicroRecord.csproj
@@ -60,7 +67,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
+        if: steps.version.outputs.tag != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,4 +83,5 @@ jobs:
 
           Положите EXE в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
           "@
-          gh release create "${{ github.ref_name }}" dist/* --title "MicroRecord $v" --notes "$notes" --generate-notes
+          # --target creates the tag on this commit when it does not exist yet (manual runs).
+          gh release create "${{ steps.version.outputs.tag }}" dist/* --target "${{ github.sha }}" --title "MicroRecord $v" --notes "$notes" --generate-notes
