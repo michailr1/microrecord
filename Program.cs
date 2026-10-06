@@ -1,9 +1,6 @@
 using System.Diagnostics;
+using System.Media;
 using System.Runtime.InteropServices;
-using NAudio.CoreAudioApi;
-using NAudio.Extras;
-using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 
 namespace MicroRecord;
 
@@ -12,8 +9,29 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        // A second copy cannot register the hotkey and would fight over the recording.
+        using var single = new Mutex(true, @"Local\MicroRecord.SingleInstance", out var isFirst);
+        if (!isFirst)
+        {
+            MessageBox.Show("MicroRecord уже запущен (значок в трее).", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         ApplicationConfiguration.Initialize();
         Application.Run(new MicroRecordContext());
+    }
+
+    public static string Version => typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "?";
+}
+
+internal static class AppIcons
+{
+    public static readonly Icon Idle = Load("MicroRecord.ico");
+    public static readonly Icon Recording = Load("Recording.ico");
+
+    private static Icon Load(string name)
+    {
+        using var stream = typeof(AppIcons).Assembly.GetManifestResourceStream(name);
+        return stream == null ? SystemIcons.Application : new Icon(stream);
     }
 }
 
@@ -22,106 +40,211 @@ internal sealed class MicroRecordContext : ApplicationContext
     private const int HotkeyId = 1;
     private readonly NotifyIcon tray;
     private readonly HotkeyWindow hotkeyWindow;
-    private readonly string outputDir;
     private readonly string logPath;
+    private AppSettings settings;
     private RecordingSession? session;
-    private bool stopping;
+    private SettingsForm? settingsForm;
+    private bool busy;
 
     public MicroRecordContext()
     {
-        outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
-        Directory.CreateDirectory(outputDir);
-        logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.6 started (NAudio legacy WASAPI backend)");
+        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
+        Directory.CreateDirectory(logDir);
+        logPath = Path.Combine(logDir, "microrecord.log");
+        settings = AppSettings.Load(Log);
+        Log($"MicroRecord v{Program.Version} started");
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
-        menu.Items.Add("Open recordings folder", null, (_, _) => OpenFolder());
+        menu.Items.Add("Начать / остановить запись", null, (_, _) => ToggleRecording());
+        menu.Items.Add("Открыть папку с записями", null, (_, _) => OpenFolder());
+        menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => ExitApp());
+        menu.Items.Add("MicroRecord на GitHub", null, (_, _) => OpenUrl(AppSettings.GitHubUrl));
+        menu.Items.Add("Выход", null, (_, _) => ExitApp());
 
         tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
-            Text = "MicroRecord — ready (Ctrl+Alt+R)",
+            Icon = AppIcons.Idle,
             Visible = true,
             ContextMenuStrip = menu
         };
         tray.DoubleClick += (_, _) => ToggleRecording();
-        tray.ShowBalloonTip(1500, "MicroRecord", "Ready. Ctrl+Alt+R starts recording.", ToolTipIcon.Info);
 
         hotkeyWindow = new HotkeyWindow(ToggleRecording);
-        if (!hotkeyWindow.Register(HotkeyId, HotkeyModifiers.Control | HotkeyModifiers.Alt, Keys.R))
+        RegisterHotkey(showError: true);
+        SetIdleState();
+        tray.ShowBalloonTip(1500, "MicroRecord", $"Готов. {settings.HotkeyText} — начать запись.", ToolTipIcon.Info);
+    }
+
+    private void RegisterHotkey(bool showError)
+    {
+        if (hotkeyWindow.Register(HotkeyId, settings.HotkeyModifiers, settings.HotkeyKey)) return;
+        Log($"WARNING: failed to register {settings.HotkeyText}");
+        if (showError)
         {
-            Log("WARNING: failed to register Ctrl+Alt+R");
-            MessageBox.Show("Could not register Ctrl+Alt+R. Use the tray menu instead.", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show($"Не удалось зарегистрировать {settings.HotkeyText} (занято другой программой). Выберите другое сочетание в настройках или используйте меню в трее.",
+                "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
+    private void SetIdleState()
+    {
+        tray.Icon = AppIcons.Idle;
+        tray.Text = Truncate($"MicroRecord — готов ({settings.HotkeyText})");
+    }
+
+    private static string Truncate(string text) => text.Length <= 63 ? text : text[..63]; // NotifyIcon.Text limit
+
     private void ToggleRecording()
     {
-        if (stopping) return;
+        if (busy) return;
         if (session == null) StartRecording();
         else StopRecording();
     }
 
     private void StartRecording()
     {
+        busy = true;
         try
         {
-            session = new RecordingSession(outputDir, Log);
+            session = new RecordingSession(settings.OutputFolder, settings.Clone(), Log);
+            tray.Text = "MicroRecord — запуск…";
             session.Start();
-            tray.Icon = SystemIcons.Error;
-            tray.Text = "MicroRecord — RECORDING (Ctrl+Alt+R to stop)";
-            tray.ShowBalloonTip(1200, "MicroRecord", "Recording started", ToolTipIcon.Info);
-            Log($"recording started: {session.OutputPath}");
+            tray.Icon = AppIcons.Recording;
+            tray.Text = Truncate($"MicroRecord — ИДЁТ ЗАПИСЬ ({settings.HotkeyText} — стоп)");
+            if (settings.PlaySounds) SystemSounds.Asterisk.Play();
+            Log($"recording started: {session.TempWavPath}");
+            if (session.Warning != null) tray.ShowBalloonTip(4000, "MicroRecord — неполная запись", session.Warning, ToolTipIcon.Warning);
+            else tray.ShowBalloonTip(1200, "MicroRecord", "Запись началась", ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
             session?.Dispose();
             session = null;
-            tray.Icon = SystemIcons.Application;
-            tray.Text = "MicroRecord — error";
+            SetIdleState();
             Log("start error: " + ex);
-            MessageBox.Show(ex.ToString(), "MicroRecord — recording failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "MicroRecord — не удалось начать запись", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        finally { busy = false; }
     }
 
-    private void StopRecording()
+    private async void StopRecording()
     {
-        if (session == null) return;
-        stopping = true;
+        var current = session;
+        if (current == null) return;
+        busy = true;
         try
         {
-            tray.Text = "MicroRecord — stopping...";
-            var completed = session.Stop();
-            Log($"recording saved: {completed}");
-            tray.ShowBalloonTip(1600, "MicroRecord", $"Saved: {Path.GetFileName(completed)}", ToolTipIcon.Info);
+            current.Stop();
+            session = null;
+            if (settings.PlaySounds) SystemSounds.Exclamation.Play();
+            tray.Icon = AppIcons.Idle;
+            tray.Text = "MicroRecord — сохранение…";
+            busy = false; // a new recording may start while the previous one is being encoded
+            var saved = await Task.Run(current.Finish);
+            Log($"recording saved: {saved}");
+            tray.ShowBalloonTip(2000, "MicroRecord", $"Сохранено: {Path.GetFileName(saved)}", ToolTipIcon.Info);
+            if (settings.OpenFolderAfterRecording) SelectInExplorer(saved);
         }
         catch (Exception ex)
         {
             Log("stop error: " + ex);
-            MessageBox.Show(ex.ToString(), "MicroRecord — stop failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "MicroRecord — ошибка при остановке", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
-            session.Dispose();
-            session = null;
-            stopping = false;
-            tray.Icon = SystemIcons.Application;
-            tray.Text = "MicroRecord — ready (Ctrl+Alt+R)";
+            current.Dispose();
+            if (session == null) SetIdleState();
+            busy = false;
         }
     }
 
-    private void OpenFolder() => Process.Start(new ProcessStartInfo(outputDir) { UseShellExecute = true });
+    /// <summary>Records a few seconds with the given (unsaved) settings and opens the result.</summary>
+    public async Task<string> RunTestAsync(AppSettings testSettings, int seconds)
+    {
+        if (session != null || busy) throw new InvalidOperationException("Сначала остановите текущую запись.");
+        busy = true;
+        using var test = new RecordingSession(Path.Combine(Path.GetTempPath(), "MicroRecord"), testSettings, Log);
+        try
+        {
+            test.Start();
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            test.Stop();
+            var path = await Task.Run(test.Finish);
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            var levels = string.Join(", ", test.Meters.Select(m => $"{(m.Name == "mic" ? "микрофон" : "система")}: пик {m.TotalPeakText}"));
+            return $"{levels}{(test.Warning != null ? " — " + test.Warning : "")}";
+        }
+        finally { busy = false; }
+    }
+
+    public void RunDiagnostics()
+    {
+        if (session != null)
+        {
+            MessageBox.Show("Сначала остановите запись.", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        tray.ShowBalloonTip(1500, "MicroRecord", "Идёт диагностика звука…", ToolTipIcon.Info);
+        Task.Run(() => AudioDiagnostics.Run(Log)).ContinueWith(_ =>
+        {
+            tray.ShowBalloonTip(2500, "MicroRecord", "Результат записан в microrecord.log", ToolTipIcon.Info);
+            OpenLog();
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    public void OpenLog()
+    {
+        if (File.Exists(logPath)) Process.Start(new ProcessStartInfo(logPath) { UseShellExecute = true });
+    }
+
+    private void ShowSettings()
+    {
+        if (settingsForm != null)
+        {
+            settingsForm.Activate();
+            return;
+        }
+        settingsForm = new SettingsForm(settings.Clone(), this);
+        settingsForm.FormClosed += (_, _) => settingsForm = null;
+        settingsForm.Show();
+    }
+
+    /// <summary>Called by the settings window on OK/Apply.</summary>
+    public void ApplySettings(AppSettings updated, bool startWithWindows)
+    {
+        var hotkeyChanged = updated.HotkeyModifiers != settings.HotkeyModifiers || updated.HotkeyKey != settings.HotkeyKey;
+        settings = updated;
+        try { settings.Save(Log); }
+        catch (Exception ex) { MessageBox.Show("Не удалось сохранить настройки: " + ex.Message, "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        try { if (settings.StartWithWindows != startWithWindows) settings.StartWithWindows = startWithWindows; }
+        catch (Exception ex) { Log("autostart error: " + ex.Message); }
+        if (hotkeyChanged) RegisterHotkey(showError: true);
+        if (session == null) SetIdleState();
+        Log($"settings saved: format={settings.Format} {settings.BitrateKbps}kbps split={settings.SplitTracks} mic={settings.MicVolumePercent}% system={settings.SystemVolumePercent}% micMode={settings.MicMode} hotkey={settings.HotkeyText}");
+    }
+
+    private void OpenFolder()
+    {
+        Directory.CreateDirectory(settings.OutputFolder);
+        Process.Start(new ProcessStartInfo(settings.OutputFolder) { UseShellExecute = true });
+    }
+
+    private static void SelectInExplorer(string path) => Process.Start("explorer.exe", $"/select,\"{path}\"");
+
+    public static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
     private void ExitApp()
     {
         if (session != null)
         {
-            var answer = MessageBox.Show("Recording is active. Stop and exit?", "MicroRecord", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var answer = MessageBox.Show("Идёт запись. Остановить и выйти?", "MicroRecord", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (answer != DialogResult.Yes) return;
-            StopRecording();
+            // Exiting cannot wait for an async encode; keep the 16-bit WAV.
+            session.Stop();
+            Log($"exit during recording, WAV kept: {session.TempWavPath}");
+            session.Dispose();
+            session = null;
         }
         hotkeyWindow.Dispose();
         tray.Visible = false;
@@ -129,10 +252,15 @@ internal sealed class MicroRecordContext : ApplicationContext
         ExitThread();
     }
 
+    private readonly object logLock = new();
+
     private void Log(string message)
     {
-        try { File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
-        catch { }
+        lock (logLock)
+        {
+            try { File.AppendAllText(logPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}{Environment.NewLine}"); }
+            catch { }
+        }
     }
 
     protected override void ExitThreadCore()
@@ -141,133 +269,6 @@ internal sealed class MicroRecordContext : ApplicationContext
         try { hotkeyWindow.Dispose(); } catch { }
         try { tray.Visible = false; tray.Dispose(); } catch { }
         base.ExitThreadCore();
-    }
-}
-
-internal sealed class RecordingSession : IDisposable
-{
-    private readonly Action<string> log;
-    private WasapiCapture? micRecorder;
-    private WasapiLoopbackCapture? systemRecorder;
-    private RealtimeCaptureMixer? mixer;
-    private WaveFileWriter? writer;
-    private CancellationTokenSource? pumpCts;
-    private Task? pumpTask;
-    private bool started;
-    private bool stopped;
-
-    public string OutputPath { get; }
-
-    public RecordingSession(string outputDir, Action<string> logger)
-    {
-        log = logger;
-        OutputPath = Path.Combine(outputDir, $"meeting_{DateTime.Now:yyyyMMdd_HHmmss}.wav");
-    }
-
-    public void Start()
-    {
-        if (started) throw new InvalidOperationException("Recording already started.");
-
-#pragma warning disable CS0618
-        // The newer NAudio 3 WasapiRecorder path produced E_INVALIDARG on this USB headset.
-        // The mature legacy classes use a different initialization path, polling sync and
-        // AutoConvertPcm/SrcDefaultQuality flags, which is more tolerant of USB audio drivers.
-        micRecorder = new WasapiCapture();
-        systemRecorder = new WasapiLoopbackCapture();
-#pragma warning restore CS0618
-
-        log($"mic format: {micRecorder.WaveFormat}");
-        log($"system format: {systemRecorder.WaveFormat}");
-
-        var targetRate = Math.Max(44100, Math.Max(micRecorder.WaveFormat.SampleRate, systemRecorder.WaveFormat.SampleRate));
-        var targetFormat = WaveFormat.CreateIeeeFloatWaveFormat(targetRate, 2);
-        mixer = new RealtimeCaptureMixer(targetFormat);
-
-        var micInput = mixer.AddInput(micRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
-        var systemInput = mixer.AddInput(systemRecorder.WaveFormat, p => new VolumeSampleProvider(p) { Volume = 0.5f });
-
-        micRecorder.DataAvailable += (_, a) => micInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
-        systemRecorder.DataAvailable += (_, a) => systemInput.AddSamples(a.Buffer.AsSpan(0, a.BytesRecorded));
-
-        writer = new WaveFileWriter(OutputPath, mixer.WaveFormat);
-        pumpCts = new CancellationTokenSource();
-        mixer.Start();
-        pumpTask = Task.Run(() => PumpAudio(pumpCts.Token));
-
-        try
-        {
-            log("starting system loopback...");
-            systemRecorder.StartRecording();
-            log("system loopback started OK");
-
-            log("starting microphone...");
-            micRecorder.StartRecording();
-            log("microphone started OK");
-
-            started = true;
-        }
-        catch
-        {
-            try { systemRecorder?.StopRecording(); } catch { }
-            try { micRecorder?.StopRecording(); } catch { }
-            pumpCts?.Cancel();
-            try { pumpTask?.Wait(TimeSpan.FromSeconds(1)); } catch { }
-            writer?.Dispose();
-            writer = null;
-            try { if (File.Exists(OutputPath) && new FileInfo(OutputPath).Length <= 64) File.Delete(OutputPath); } catch { }
-            throw;
-        }
-    }
-
-    private void PumpAudio(CancellationToken token)
-    {
-        if (mixer == null || writer == null) return;
-        var buffer = new float[Math.Max(4096, mixer.WaveFormat.SampleRate * mixer.WaveFormat.Channels / 10)];
-        while (!token.IsCancellationRequested)
-        {
-            var read = mixer.Read(buffer, 0, buffer.Length);
-            if (read > 0) writer.WriteSamples(buffer, 0, read);
-            else Thread.Sleep(5);
-        }
-
-        var deadline = Stopwatch.StartNew();
-        while (deadline.ElapsedMilliseconds < 120)
-        {
-            var read = mixer.Read(buffer, 0, buffer.Length);
-            if (read <= 0) break;
-            writer.WriteSamples(buffer, 0, read);
-        }
-    }
-
-    public string Stop()
-    {
-        if (!started || stopped) return OutputPath;
-        stopped = true;
-
-        try { micRecorder?.StopRecording(); } catch (Exception ex) { log("mic stop warning: " + ex.Message); }
-        try { systemRecorder?.StopRecording(); } catch (Exception ex) { log("system stop warning: " + ex.Message); }
-        Thread.Sleep(120);
-
-        pumpCts?.Cancel();
-        try { pumpTask?.Wait(TimeSpan.FromSeconds(3)); } catch (Exception ex) { log("pump stop warning: " + ex.Message); }
-
-        writer?.Dispose();
-        writer = null;
-        micRecorder?.Dispose();
-        micRecorder = null;
-        systemRecorder?.Dispose();
-        systemRecorder = null;
-        return OutputPath;
-    }
-
-    public void Dispose()
-    {
-        try { if (started && !stopped) Stop(); } catch { }
-        try { pumpCts?.Cancel(); } catch { }
-        try { pumpCts?.Dispose(); } catch { }
-        try { writer?.Dispose(); } catch { }
-        try { micRecorder?.Dispose(); } catch { }
-        try { systemRecorder?.Dispose(); } catch { }
     }
 }
 
@@ -286,8 +287,10 @@ internal sealed class HotkeyWindow : NativeWindow, IDisposable
         CreateHandle(new CreateParams { Caption = "MicroRecordHotkeyWindow" });
     }
 
+    /// <summary>(Re)registers the hotkey; any previous registration is released first.</summary>
     public bool Register(int id, HotkeyModifiers modifiers, Keys key)
     {
+        if (registeredId != 0) UnregisterHotKey(Handle, registeredId);
         registeredId = id;
         return RegisterHotKey(Handle, id, (uint)modifiers, (uint)key);
     }

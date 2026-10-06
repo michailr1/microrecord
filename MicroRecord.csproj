@@ -13,10 +13,20 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <Version>1.0.0</Version>
+    <Product>MicroRecord</Product>
+    <Description>Portable Windows meeting recorder: microphone + system audio to one file with a hotkey.</Description>
+    <Copyright>Copyright (c) 2026 michailr1. MIT License.</Copyright>
+    <ApplicationIcon>Assets\MicroRecord.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="3.1.0" />
     <PackageReference Include="NAudio.Extras" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\MicroRecord.ico" LogicalName="MicroRecord.ico" />
+    <EmbeddedResource Include="Assets\Recording.ico" LogicalName="Recording.ico" />
   </ItemGroup>
 </Project>

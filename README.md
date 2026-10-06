@@ -1,15 +1,75 @@
-# MicroRecord
+<p align="center"><img src="docs/icon.png" width="96" alt="MicroRecord icon"></p>
 
-Minimal local Windows meeting audio recorder.
+<h1 align="center">MicroRecord</h1>
 
-- `Ctrl+Alt+R` — start/stop recording
-- tray icon with recording state
-- captures default microphone and default Windows output (WASAPI loopback)
-- writes temporary tracks locally, then mixes them into one WAV
-- no network, cloud, transcription, or telemetry
+<p align="center"><b>Одна горячая клавиша — и встреча записана.</b><br>
+Портативный рекордер для Windows: ваш микрофон и звук собеседников в одном файле. Без облака, без установки, без телеметрии.</p>
 
-## Build
+<p align="center"><i>A portable one-hotkey meeting recorder for Windows: your microphone plus everyone else (system audio) in a single MP3. No cloud, no install, no telemetry.</i></p>
 
-The GitHub Actions workflow publishes a self-contained single-file `win-x64` executable.
+---
 
-Current implementation uses NAudio for WASAPI capture instead of the earlier hand-written COM/WASAPI prototype.
+## Зачем
+
+Zoom, Teams, Meet, Telegram, звонок в браузере — неважно, где идёт разговор. Нажимаете **Ctrl+Alt+R**, говорите, нажимаете ещё раз — в папке появляется `meeting_20261006_191154.mp3`. Дальше файл можно слушать, отправить коллегам или скормить любой программе расшифровки.
+
+## Возможности
+
+- **Горячая клавиша** (по умолчанию `Ctrl+Alt+R`) и значок в трее, который краснеет во время записи.
+- **Микрофон + системный звук** в одном файле.
+- **Раздельные дорожки**: слева вы, справа собеседники — громкость каждой стороны можно поправить потом, а расшифровщикам проще различать говорящих.
+- **MP3, M4A (AAC), FLAC или WAV** — сжатие встроенными кодеками Windows. MP3 128 кбит/с — около 55 МБ за час вместо 1,4 ГБ несжатого звука.
+- **Надёжность**: во время записи пишется WAV, сжатие — после остановки. Если что-то пошло не так, WAV остаётся.
+- **Работает там, где другие не могут.** Если антивирус или корпоративная политика (например, Kaspersky) запрещает программам открывать звуковые устройства, MicroRecord:
+  - пишет системный звук через *process loopback* (виртуальное устройство Windows, не трогающее заблокированные endpoint'ы);
+  - пишет микрофон через вкладку вашего браузера, которому антивирус доверяет.
+- **Настройки**: громкость микрофона и системного звука, автоусиление и шумоподавление, формат и битрейт с оценкой размера, папка, шаблон имени, горячая клавиша, автозапуск, тестовая запись на 5 секунд.
+- **Портативность**: один `.exe`, настройки — `settings.json` рядом с ним.
+- **Приватность**: никаких сетевых запросов наружу. Единственное сетевое соединение — локальное (`127.0.0.1`) между программой и вкладкой браузера, если она используется.
+
+## Установка
+
+1. Скачайте `MicroRecord.exe` из последней сборки ([Actions → Build MicroRecord](https://github.com/michailr1/microrecord/actions/workflows/build.yml) → артефакт `MicroRecord-win-x64`).
+2. Положите в любую папку и запустите. Установка и права администратора не нужны.
+
+**Требования:** Windows 10 версии 2004 (сборка 19041) или новее, x64.
+
+## Использование
+
+| Действие | Как |
+|---|---|
+| Начать / остановить запись | `Ctrl+Alt+R` или двойной щелчок по значку в трее |
+| Настройки | правый щелчок по значку → **Настройки…** |
+| Где записи | `Документы\MicroRecord` (меняется в настройках) |
+| Лог | `Документы\MicroRecord\microrecord.log` |
+
+**Если микрофон пишется через браузер.** При первом запуске откроется вкладка `127.0.0.1:47123` и браузер спросит доступ к микрофону — разрешите и отметьте «Разрешать при каждом посещении». Не закрывайте вкладку, пока идёт запись. Если вы знаете, что на вашем компьютере микрофон всегда блокируется, выберите в настройках «Сразу через вкладку браузера» — запись будет стартовать быстрее.
+
+## Как это устроено
+
+Каждая сторона перебирает способы захвата по порядку и берёт первый работающий:
+
+| Системный звук | Микрофон |
+|---|---|
+| 1. WASAPI loopback на устройстве по умолчанию | 1. WASAPI capture на устройстве по умолчанию |
+| 2. Process loopback — все приложения, кроме MicroRecord | 2. WASAPI через `ActivateAudioInterfaceAsync` |
+| | 3. WinMM `waveIn` |
+| | 4. Вкладка браузера: `getUserMedia` → AudioWorklet → WebSocket на `127.0.0.1` |
+
+Оба потока сводятся микшером, который идёт по реальному времени (NAudio `RealtimeCaptureMixer`), и пишутся в 16-битный WAV. После остановки Media Foundation кодирует его в выбранный формат.
+
+Если запись не работает: **Настройки → Диагностика → Диагностика звука** проверяет все устройства и способы захвата и пишет подробный отчёт в лог. Приложите его к [issue](https://github.com/michailr1/microrecord/issues).
+
+## Сборка
+
+```
+dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+```
+
+Нужен .NET 9 SDK. GitHub Actions собирает тот же самый single-file `.exe` на каждый push.
+
+Зависимости: [NAudio](https://github.com/naudio/NAudio) 3.x (WASAPI, process loopback, Media Foundation, микшер). Кодеки — встроенные в Windows.
+
+## Лицензия
+
+[MIT](LICENSE) — свободно используйте, изменяйте и распространяйте, сохраняя указание авторства. Программа предоставляется «как есть», без гарантий.

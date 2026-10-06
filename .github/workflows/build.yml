@@ -2,7 +2,7 @@ name: Build MicroRecord
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'claude/**' ]
   workflow_dispatch:
 
 jobs:
@@ -35,6 +35,6 @@ jobs:
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: MicroRecord-v0.5-win-x64
+          name: MicroRecord-win-x64
           path: publish/MicroRecord.exe
           if-no-files-found: error
