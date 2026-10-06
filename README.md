@@ -69,3 +69,7 @@ dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p
 Нужен .NET 9 SDK. GitHub Actions собирает тот же самый single-file `.exe` на каждый push.
 
 Зависимости: [NAudio](https://github.com/naudio/NAudio) 3.x (WASAPI, process loopback, Media Foundation, микшер). Кодеки — встроенные в Windows.
+
+## Лицензия
+
+[MIT](LICENSE) — свободно используйте, изменяйте и распространяйте, сохраняя указание авторства. Программа предоставляется «как есть», без гарантий.
