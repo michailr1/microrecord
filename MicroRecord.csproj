@@ -1,14 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <!-- Plain net9.0-windows: a windows10.x TFM would bundle the ~25 MB Windows SDK projection we don't use.
+         Process loopback needs Windows 10 2004; that is checked at runtime (AudioSourceFactory.OpenProcessLoopback). -->
+    <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MicroRecord</AssemblyName>
     <RootNamespace>MicroRecord</RootNamespace>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
+    <!-- Self-contained vs framework-dependent is chosen per publish (see .github/workflows/build.yml). -->
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>

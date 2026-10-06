@@ -3,13 +3,14 @@ name: Build MicroRecord
 on:
   push:
     branches: [ main, 'claude/**' ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write   # needed to publish the GitHub Release on tag pushes
 
     steps:
       - name: Checkout
@@ -20,21 +21,59 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          # Tag v1.2.3 -> 1.2.3; other builds use the version from the csproj.
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart('v') }
+          else { $v = ([xml](Get-Content MicroRecord.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1 }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
       - name: Restore
         run: dotnet restore MicroRecord.csproj
 
-      - name: Publish self-contained single EXE
-        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+      # Full build: .NET runtime bundled and compressed into the EXE. Runs anywhere.
+      - name: Publish self-contained EXE
+        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/full
 
-      - name: Show output
+      # Small build: needs the .NET 9 Desktop Runtime installed (Windows offers the download if it is missing).
+      - name: Publish framework-dependent EXE
+        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/small
+
+      - name: Collect release files
         shell: pwsh
         run: |
-          Get-ChildItem publish | Format-Table Name,Length
-          Get-FileHash publish\MicroRecord.exe -Algorithm SHA256
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item publish/full/MicroRecord.exe "dist/MicroRecord-$v-win-x64.exe"
+          Copy-Item publish/small/MicroRecord.exe "dist/MicroRecord-$v-win-x64-net9.exe"
+          Get-ChildItem dist | ForEach-Object { "{0,-40} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+          Get-FileHash dist/*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt
 
-      - name: Upload EXE
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MicroRecord-win-x64
-          path: publish/MicroRecord.exe
+          name: MicroRecord-${{ steps.version.outputs.version }}-win-x64
+          path: dist/*
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          $notes = @"
+          ## Скачать
+
+          | Файл | Размер | Когда выбирать |
+          |---|---|---|
+          | **MicroRecord-$v-win-x64.exe** | ~50 МБ | Работает сразу на любом Windows 10 2004+ / 11 x64. Ничего ставить не нужно. |
+          | **MicroRecord-$v-win-x64-net9.exe** | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
+
+          Положите EXE в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
+          "@
+          gh release create "${{ github.ref_name }}" dist/* --title "MicroRecord $v" --notes "$notes" --generate-notes
