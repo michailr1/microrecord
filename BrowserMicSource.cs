@@ -205,6 +205,8 @@ internal sealed class BrowserMicSource : IAudioSource
 <style>body{font:16px system-ui,sans-serif;margin:40px;color:#222}#s{font-size:22px;margin:16px 0}</style>
 <h1>MicroRecord</h1>
 <div id="s">Разрешите доступ к микрофону…</div>
+<button id="go" style="display:none;font-size:20px;padding:8px 20px">Начать запись микрофона</button>
+<div>Уровень: <meter id="lvl" min="0" max="1" value="0" style="width:300px"></meter> <span id="db"></span></div>
 <p>Не закрывайте эту вкладку, пока идёт запись. Остановка — Ctrl+Alt+R.</p>
 <script>
 const status = t => document.getElementById('s').textContent = t;
@@ -239,11 +241,28 @@ ws.onopen = async () => {
     ctx = new AudioContext();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' })));
     const node = new AudioWorkletNode(ctx, 'pcm', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
-    node.port.onmessage = e => { if (ws.readyState === 1) ws.send(e.data); };
+    node.port.onmessage = e => {
+      const pcm = new Int16Array(e.data); let peak = 0;
+      for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
+      document.getElementById('lvl').value = peak / 32768;
+      document.getElementById('db').textContent = peak ? (20 * Math.log10(peak / 32768)).toFixed(0) + ' dB' : 'тишина';
+      if (ws.readyState === 1) ws.send(e.data);
+    };
     const mute = ctx.createGain(); mute.gain.value = 0;
     ctx.createMediaStreamSource(stream).connect(node).connect(mute).connect(ctx.destination); // keeps the graph pulled
-    await ctx.resume();
-    ws.send(JSON.stringify({ type: 'started', sampleRate: ctx.sampleRate, label: stream.getAudioTracks()[0].label }));
+    // Autoplay policy may keep the AudioContext suspended until the user clicks in the page;
+    // a suspended context produces no samples at all.
+    const resumeSoon = () => Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 500))]);
+    await resumeSoon();
+    while (ctx.state !== 'running') {
+      status('Браузер ждёт клика, чтобы включить звук:');
+      const go = document.getElementById('go'); go.style.display = '';
+      await new Promise(r => go.onclick = r);
+      go.style.display = 'none';
+      await resumeSoon();
+    }
+    const track = stream.getAudioTracks()[0];
+    ws.send(JSON.stringify({ type: 'started', sampleRate: ctx.sampleRate, label: track.label + (track.muted ? ' [track muted]' : '') + ' ctx=' + ctx.state }));
     status('● Идёт запись микрофона');
   } catch (e) {
     const message = (e && (e.name + ': ' + e.message)) || String(e);

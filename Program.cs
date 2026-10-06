@@ -11,6 +11,13 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        // A second copy cannot register Ctrl+Alt+R and would fight over the recording.
+        using var single = new Mutex(true, @"Local\MicroRecord.SingleInstance", out var isFirst);
+        if (!isFirst)
+        {
+            MessageBox.Show("MicroRecord is already running (see the tray icon).", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         ApplicationConfiguration.Initialize();
         Application.Run(new MicroRecordContext());
     }
@@ -31,7 +38,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
         Directory.CreateDirectory(outputDir);
         logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.9 started (WASAPI with process-loopback / WinMM fallbacks)");
+        Log("MicroRecord v0.9.1 started (WASAPI with process-loopback / WinMM fallbacks)");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
@@ -174,6 +181,7 @@ internal sealed class RecordingSession : IDisposable
     private IAudioSource? micSource;
     private IAudioSource? systemSource;
     private RealtimeCaptureMixer? mixer;
+    private readonly List<LevelMeter> meters = new();
     private WaveFileWriter? writer;
     private CancellationTokenSource? pumpCts;
     private Task? pumpTask;
@@ -214,7 +222,13 @@ internal sealed class RecordingSession : IDisposable
         foreach (var source in sources)
         {
             var input = mixer.AddInput(source.WaveFormat, p => new VolumeSampleProvider(p) { Volume = sources.Length > 1 ? 0.5f : 1f });
-            source.Sink = data => input.AddSamples(data);
+            var meter = new LevelMeter(source == micSource ? "mic" : "system", source.WaveFormat, log);
+            meters.Add(meter);
+            source.Sink = data =>
+            {
+                meter.Add(data);
+                input.AddSamples(data);
+            };
         }
 
         writer = new WaveFileWriter(OutputPath, mixer.WaveFormat);
@@ -250,6 +264,7 @@ internal sealed class RecordingSession : IDisposable
         if (!started || stopped) return OutputPath;
         stopped = true;
 
+        foreach (var meter in meters) meter.LogTotal();
         try { micSource?.Stop(); } catch (Exception ex) { log("mic stop warning: " + ex.Message); }
         try { systemSource?.Stop(); } catch (Exception ex) { log("system stop warning: " + ex.Message); }
         Thread.Sleep(120);
