@@ -94,6 +94,8 @@ internal static class AudioSourceFactory
             WaveFormat = new WaveFormat(44100, 16, 1),
             BufferMilliseconds = 50
         })),
+        // Last resort: let Edge's signed audio service process open the mic, as a browser tab would.
+        ("WebView2 getUserMedia (browser audio process)", () => new WebViewMicSource(log)),
     ]);
 
     private static WasapiRecorder BuildAsync(WasapiRecorderBuilder builder) =>

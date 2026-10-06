@@ -31,7 +31,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
         Directory.CreateDirectory(outputDir);
         logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.7.1 started (WASAPI with process-loopback / WinMM fallbacks)");
+        Log("MicroRecord v0.8 started (WASAPI with process-loopback / WinMM fallbacks)");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
