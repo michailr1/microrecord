@@ -94,7 +94,7 @@ internal static class AudioSourceFactory
 #pragma warning restore CS0618
         ("WASAPI capture via ActivateAudioInterfaceAsync (default device routing)", () => new RecorderSource("WASAPI default-routing capture",
             BuildAsync(new WasapiRecorderBuilder().WithDefaultDeviceStreamRouting()))),
-        ("WinMM waveIn 44100Hz/16bit/mono", () => new WaveInSource("WinMM waveIn", new WaveInEvent
+        ("WinMM waveIn 44100Hz/16bit/mono", () => new WaveInSource("WinMM waveIn", new WaveIn
         {
             WaveFormat = new WaveFormat(44100, 16, 1),
             BufferMilliseconds = 50

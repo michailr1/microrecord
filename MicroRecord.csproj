@@ -1,7 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <!-- Plain net9.0-windows: a windows10.x TFM would bundle the ~25 MB Windows SDK projection we don't use.
+         Process loopback still needs Windows 10 2004, declared as the minimum OS version instead. -->
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

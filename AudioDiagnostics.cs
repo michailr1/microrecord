@@ -41,7 +41,7 @@ internal static class AudioDiagnostics
             Task.Run(new WasapiRecorderBuilder()
                 .WithProcessLoopback((uint)Environment.ProcessId, ProcessLoopbackMode.ExcludeTargetProcessTree)
                 .WithFormat(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2)).BuildAsync).GetAwaiter().GetResult()));
-        ProbeSource(log, "WinMM waveIn 44100Hz/16bit/mono", () => new WaveInSource("WinMM waveIn", new WaveInEvent { WaveFormat = new WaveFormat(44100, 16, 1) }));
+        ProbeSource(log, "WinMM waveIn 44100Hz/16bit/mono", () => new WaveInSource("WinMM waveIn", new WaveIn { WaveFormat = new WaveFormat(44100, 16, 1) }));
         log("===== audio diagnostics end =====");
     }
 
