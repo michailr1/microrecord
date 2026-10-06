@@ -38,7 +38,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
         Directory.CreateDirectory(outputDir);
         logPath = Path.Combine(outputDir, "microrecord.log");
-        Log("MicroRecord v0.9.1 started (WASAPI with process-loopback / WinMM fallbacks)");
+        Log("MicroRecord v0.9.2 started (WASAPI with process-loopback / WinMM fallbacks)");
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Start / Stop recording", null, (_, _) => ToggleRecording());
@@ -221,7 +221,9 @@ internal sealed class RecordingSession : IDisposable
         mixer = new RealtimeCaptureMixer(WaveFormat.CreateIeeeFloatWaveFormat(targetRate, 2));
         foreach (var source in sources)
         {
-            var input = mixer.AddInput(source.WaveFormat, p => new VolumeSampleProvider(p) { Volume = sources.Length > 1 ? 0.5f : 1f });
+            // Voice stays at full level; system audio is pulled down a bit so speech is not buried.
+            var volume = source == micSource ? 1f : sources.Length > 1 ? 0.7f : 1f;
+            var input = mixer.AddInput(source.WaveFormat, p => new VolumeSampleProvider(p) { Volume = volume });
             var meter = new LevelMeter(source == micSource ? "mic" : "system", source.WaveFormat, log);
             meters.Add(meter);
             source.Sink = data =>

@@ -197,7 +197,8 @@ internal sealed class BrowserMicSource : IAudioSource
     }
 
     // getUserMedia -> AudioWorklet -> 16-bit mono PCM in ~100 ms binary WebSocket frames.
-    // Browser voice processing is disabled so the recording matches the raw microphone.
+    // Browser AGC + noise suppression stay on (as in a meeting tab): raw headset mics such as the
+    // Logitech H340 peak around -45 dBFS, which is inaudible in the mix. Echo cancellation is off.
     private const string PageHtml = """
 <!doctype html>
 <meta charset="utf-8">
@@ -237,14 +238,14 @@ ws.onmessage = e => { if (e.data === 'stop') stopCapture('Запись оста�
 ws.onclose = () => stopCapture('Соединение с MicroRecord закрыто. Вкладку можно закрыть.');
 ws.onopen = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
     ctx = new AudioContext();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' })));
     const node = new AudioWorkletNode(ctx, 'pcm', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
     node.port.onmessage = e => {
       const pcm = new Int16Array(e.data); let peak = 0;
       for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
-      document.getElementById('lvl').value = peak / 32768;
+      document.getElementById('lvl').value = peak ? Math.max(0, 1 + Math.log10(peak / 32768) / 3) : 0; // -60..0 dB
       document.getElementById('db').textContent = peak ? (20 * Math.log10(peak / 32768)).toFixed(0) + ' dB' : 'тишина';
       if (ws.readyState === 1) ws.send(e.data);
     };
