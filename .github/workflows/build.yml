@@ -53,8 +53,9 @@ jobs:
         run: |
           $v = "${{ steps.version.outputs.version }}"
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item publish/full/MicroRecord.exe "dist/MicroRecord-$v-win-x64.exe"
-          Copy-Item publish/small/MicroRecord.exe "dist/MicroRecord-$v-win-x64-net9.exe"
+          # Unversioned names keep https://github.com/<repo>/releases/latest/download/<name> stable (install.ps1 relies on it).
+          Copy-Item publish/full/MicroRecord.exe dist/MicroRecord-win-x64.exe
+          Copy-Item publish/small/MicroRecord.exe dist/MicroRecord-win-x64-net9.exe
           Get-ChildItem dist | ForEach-Object { "{0,-40} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
           Get-FileHash dist/*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content dist/SHA256SUMS.txt
           Get-Content dist/SHA256SUMS.txt
@@ -78,10 +79,15 @@ jobs:
 
           | Файл | Размер | Когда выбирать |
           |---|---|---|
-          | **MicroRecord-$v-win-x64.exe** | ~50 МБ | Работает сразу на любом Windows 10 2004+ / 11 x64. Ничего ставить не нужно. |
-          | **MicroRecord-$v-win-x64-net9.exe** | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
+          | **MicroRecord-win-x64.exe** | ~50 МБ | Работает сразу на любом Windows 10 2004+ / 11 x64. Ничего ставить не нужно. |
+          | **MicroRecord-win-x64-net9.exe** | ~2 МБ | Если установлен [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0). Если нет — Windows предложит его скачать. |
 
-          Положите EXE в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
+          **Проще всего** — установка одной командой в PowerShell (без прав администратора и без окна SmartScreen):
+          ``````
+          irm https://raw.githubusercontent.com/michailr1/microrecord/main/install.ps1 | iex
+          ``````
+
+          Или скачайте EXE ниже, положите в любую папку и запустите. Запись: **Ctrl+Alt+R**. Контрольные суммы — в SHA256SUMS.txt.
 
           **«Система Windows защитила ваш компьютер»** — программа пока без цифровой подписи. Нажмите «Подробнее» → «Выполнить в любом случае». Если Windows просит пароль администратора: до запуска откройте свойства EXE и отметьте «Разблокировать» (или `Unblock-File` в PowerShell).
           "@
