@@ -35,6 +35,11 @@ internal sealed class AppSettings
     public string FileNameTemplate { get; set; } = "meeting_{date}_{time}";
     public bool OpenFolderAfterRecording { get; set; }
 
+    // Auto-stop and splitting
+    public bool AutoStopEnabled { get; set; } = true;
+    public int AutoStopMinutes { get; set; } = 180;
+    public int SplitSizeMb { get; set; } = 20;
+
     // General
     public HotkeyModifiers HotkeyModifiers { get; set; } = HotkeyModifiers.Control | HotkeyModifiers.Alt;
     public Keys HotkeyKey { get; set; } = Keys.R;
