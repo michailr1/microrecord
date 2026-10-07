@@ -69,6 +69,11 @@ internal sealed class MicroRecordContext : ApplicationContext
         Directory.CreateDirectory(logDir);
         logPath = Path.Combine(logDir, "microrecord.log");
         settings = AppSettings.Load(Log);
+        if (!AppSettings.FileExists())
+        {
+            try { Log("settings file created: " + settings.Save(Log)); }
+            catch (Exception ex) { Log("settings: could not create file: " + ex.Message); }
+        }
         Log($"MicroRecord v{Program.Version} started");
 
         var menu = new ContextMenuStrip();

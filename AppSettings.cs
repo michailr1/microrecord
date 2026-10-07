@@ -119,18 +119,22 @@ internal sealed class AppSettings
         return new AppSettings();
     }
 
-    public void Save(Action<string> log)
+    public string Save(Action<string> log)
     {
         var json = JsonSerializer.Serialize(this, JsonOptions);
         try
         {
             File.WriteAllText(PortablePath, json);
-            return;
+            return PortablePath;
         }
         catch (Exception ex) { log($"settings: {PortablePath} not writable ({ex.Message}), using %APPDATA%"); }
         Directory.CreateDirectory(Path.GetDirectoryName(AppDataPath)!);
         File.WriteAllText(AppDataPath, json);
+        return AppDataPath;
     }
+
+    /// <summary>True when a settings.json already exists in either location.</summary>
+    public static bool FileExists() => File.Exists(PortablePath) || File.Exists(AppDataPath);
 
     public AppSettings Clone() => JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(this, JsonOptions), JsonOptions)!;
 }
