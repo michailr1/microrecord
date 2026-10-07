@@ -93,7 +93,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         hotkeyWindow = new HotkeyWindow(ToggleRecording);
         RegisterHotkey(showError: true);
         SetIdleState();
-        tray.ShowBalloonTip(1500, "MicroRecord", $"Готов. {settings.HotkeyText} — начать запись.", ToolTipIcon.Info);
+        Toast.Show("MicroRecord", $"Готов. {settings.HotkeyText} — начать запись.");
     }
 
     private void RegisterHotkey(bool showError)
@@ -135,8 +135,8 @@ internal sealed class MicroRecordContext : ApplicationContext
             if (settings.PlaySounds) SystemSounds.Asterisk.Play();
             StartAutoStopTimer();
             Log($"recording started: {session.TempWavPath}");
-            if (session.Warning != null) tray.ShowBalloonTip(4000, "MicroRecord — неполная запись", session.Warning, ToolTipIcon.Warning);
-            else tray.ShowBalloonTip(1200, "MicroRecord", "Запись началась", ToolTipIcon.Info);
+            if (session.Warning != null) Toast.Show("Неполная запись", session.Warning, ToastLevel.Warning, 5000);
+            else Toast.Show("MicroRecord", "● Запись началась", ToastLevel.Success);
         }
         catch (Exception ex)
         {
@@ -165,7 +165,7 @@ internal sealed class MicroRecordContext : ApplicationContext
             busy = false; // a new recording may start while the previous one is being encoded
             var saved = await Task.Run(current.Finish);
             Log($"recording saved: {saved}");
-            tray.ShowBalloonTip(2000, "MicroRecord", $"Сохранено: {Path.GetFileName(saved)}", ToolTipIcon.Info);
+            Toast.Show("Запись сохранена", Path.GetFileName(saved), ToastLevel.Success);
             if (settings.OpenFolderAfterRecording) SelectInExplorer(saved);
         }
         catch (Exception ex)
@@ -214,7 +214,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         autoStopTimer.Stop();
         if (session == null) return;
         Log($"auto-stop after {settings.AutoStopMinutes} min");
-        tray.ShowBalloonTip(3000, "MicroRecord", $"Автоматическая остановка после {settings.AutoStopMinutes} мин.", ToolTipIcon.Info);
+        Toast.Show("Автостоп", $"Запись остановлена автоматически после {settings.AutoStopMinutes} мин.", ToastLevel.Warning, 5000);
         StopRecording();
     }
 
@@ -244,10 +244,10 @@ internal sealed class MicroRecordContext : ApplicationContext
             MessageBox.Show("Сначала остановите запись.", "MicroRecord", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        tray.ShowBalloonTip(1500, "MicroRecord", "Идёт диагностика звука…", ToolTipIcon.Info);
+        Toast.Show("MicroRecord", "Идёт диагностика звука…");
         Task.Run(() => AudioDiagnostics.Run(Log)).ContinueWith(_ =>
         {
-            tray.ShowBalloonTip(2500, "MicroRecord", "Результат записан в microrecord.log", ToolTipIcon.Info);
+            Toast.Show("Диагностика готова", "Результат записан в microrecord.log", ToastLevel.Success);
             OpenLog();
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
