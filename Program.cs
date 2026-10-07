@@ -59,6 +59,8 @@ internal sealed class MicroRecordContext : ApplicationContext
     private AppSettings settings;
     private RecordingSession? session;
     private SettingsForm? settingsForm;
+    private EditorForm? editorForm;
+    private readonly System.Windows.Forms.Timer autoStopTimer = new();
     private bool busy;
 
     public MicroRecordContext()
@@ -72,6 +74,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Начать / остановить запись", null, (_, _) => ToggleRecording());
         menu.Items.Add("Открыть папку с записями", null, (_, _) => OpenFolder());
+        menu.Items.Add("Обработка записи…", null, (_, _) => ShowEditor(null));
         menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("MicroRecord на GitHub", null, (_, _) => OpenUrl(AppSettings.GitHubUrl));
@@ -84,6 +87,8 @@ internal sealed class MicroRecordContext : ApplicationContext
             ContextMenuStrip = menu
         };
         tray.DoubleClick += (_, _) => ToggleRecording();
+
+        autoStopTimer.Tick += (_, _) => AutoStop();
 
         hotkeyWindow = new HotkeyWindow(ToggleRecording);
         RegisterHotkey(showError: true);
@@ -128,6 +133,7 @@ internal sealed class MicroRecordContext : ApplicationContext
             tray.Icon = AppIcons.Recording;
             tray.Text = Truncate($"MicroRecord — ИДЁТ ЗАПИСЬ ({settings.HotkeyText} — стоп)");
             if (settings.PlaySounds) SystemSounds.Asterisk.Play();
+            StartAutoStopTimer();
             Log($"recording started: {session.TempWavPath}");
             if (session.Warning != null) tray.ShowBalloonTip(4000, "MicroRecord — неполная запись", session.Warning, ToolTipIcon.Warning);
             else tray.ShowBalloonTip(1200, "MicroRecord", "Запись началась", ToolTipIcon.Info);
@@ -147,6 +153,7 @@ internal sealed class MicroRecordContext : ApplicationContext
     {
         var current = session;
         if (current == null) return;
+        autoStopTimer.Stop();
         busy = true;
         try
         {
@@ -191,6 +198,43 @@ internal sealed class MicroRecordContext : ApplicationContext
             return $"{levels}{(test.Warning != null ? " — " + test.Warning : "")}";
         }
         finally { busy = false; }
+    }
+
+    private void StartAutoStopTimer()
+    {
+        autoStopTimer.Stop();
+        if (!settings.AutoStopEnabled) return;
+        var minutes = Math.Clamp(settings.AutoStopMinutes, 1, 1440);
+        autoStopTimer.Interval = minutes * 60_000;
+        autoStopTimer.Start();
+    }
+
+    private void AutoStop()
+    {
+        autoStopTimer.Stop();
+        if (session == null) return;
+        Log($"auto-stop after {settings.AutoStopMinutes} min");
+        tray.ShowBalloonTip(3000, "MicroRecord", $"Автоматическая остановка после {settings.AutoStopMinutes} мин.", ToolTipIcon.Info);
+        StopRecording();
+    }
+
+    private void ShowEditor(string? file)
+    {
+        if (editorForm != null)
+        {
+            editorForm.Activate();
+            return;
+        }
+        editorForm = new EditorForm(settings.Clone(), Log, SaveSplitSize, file);
+        editorForm.FormClosed += (_, _) => editorForm = null;
+        editorForm.Show();
+    }
+
+    private void SaveSplitSize(int mb)
+    {
+        if (settings.SplitSizeMb == mb) return;
+        settings.SplitSizeMb = mb;
+        try { settings.Save(Log); } catch (Exception ex) { Log("settings save warning: " + ex.Message); }
     }
 
     public void RunDiagnostics()
@@ -280,6 +324,7 @@ internal sealed class MicroRecordContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        try { autoStopTimer.Dispose(); } catch { }
         try { session?.Dispose(); } catch { }
         try { hotkeyWindow.Dispose(); } catch { }
         try { tray.Visible = false; tray.Dispose(); } catch { }

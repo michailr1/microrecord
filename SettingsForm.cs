@@ -27,6 +27,9 @@ internal sealed class SettingsForm : Form
     private readonly TextBox hotkey = new() { Width = 200, ReadOnly = true, BackColor = SystemColors.Window };
     private readonly CheckBox startWithWindows = new() { Text = "Запускать вместе с Windows", AutoSize = true };
     private readonly CheckBox playSounds = new() { Text = "Звуковой сигнал при начале и окончании записи", AutoSize = true };
+    private readonly CheckBox autoStop = new() { Text = "Автоматически останавливать запись через", AutoSize = true };
+    private readonly NumericUpDown autoStopMinutes = new() { Minimum = 1, Maximum = 1440, Width = 70 };
+    private readonly NumericUpDown splitSize = new() { Minimum = 1, Maximum = 2000, Width = 70 };
 
     private HotkeyModifiers hotkeyModifiers;
     private Keys hotkeyKey;
@@ -152,7 +155,10 @@ internal sealed class SettingsForm : Form
             Row(folder, browse),
             Row(new Label { Text = "Имя файла", Width = 80 }, fileNameTemplate),
             Hint("{date} — дата (20261006), {time} — время (191154)."),
-            openFolderAfter);
+            openFolderAfter,
+            Caption("Разбивка на части"),
+            Row(new Label { Text = "Размер части по умолчанию, МБ", Width = 200, TextAlign = ContentAlignment.MiddleLeft }, splitSize),
+            Hint("Используется в окне «Обработка записи». Для транскрибации удобно держать части меньше лимита сервиса (у OpenAI Whisper — 25 МБ)."));
     }
 
     private TabPage GeneralTab()
@@ -172,6 +178,9 @@ internal sealed class SettingsForm : Form
             Caption("Горячая клавиша"),
             hotkey,
             Hint("Щёлкните в поле и нажмите новое сочетание (с Ctrl, Alt или Shift)."),
+            Caption("Автостоп"),
+            Row(autoStop, autoStopMinutes, new Label { Text = "мин", AutoSize = true, Margin = new Padding(4, 6, 0, 0) }),
+            Hint("Страховка на случай, если забыли остановить запись."),
             Caption("Прочее"),
             startWithWindows,
             playSounds);
@@ -224,6 +233,9 @@ internal sealed class SettingsForm : Form
         hotkey.Text = settings.HotkeyText;
         try { startWithWindows.Checked = settings.StartWithWindows; } catch { }
         playSounds.Checked = settings.PlaySounds;
+        autoStop.Checked = settings.AutoStopEnabled;
+        autoStopMinutes.Value = Math.Clamp(settings.AutoStopMinutes, 1, 1440);
+        splitSize.Value = Math.Clamp(settings.SplitSizeMb, 1, 2000);
     }
 
     private OutputFormat SelectedFormat => Formats[Math.Max(0, format.SelectedIndex)].Format;
@@ -275,6 +287,9 @@ internal sealed class SettingsForm : Form
         result.HotkeyModifiers = hotkeyModifiers;
         result.HotkeyKey = hotkeyKey;
         result.PlaySounds = playSounds.Checked;
+        result.AutoStopEnabled = autoStop.Checked;
+        result.AutoStopMinutes = (int)autoStopMinutes.Value;
+        result.SplitSizeMb = (int)splitSize.Value;
         return result;
     }
 
