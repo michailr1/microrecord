@@ -6,16 +6,19 @@ internal enum ToastLevel { Info, Success, Warning, Error }
 
 /// <summary>
 /// A small in-app notification shown instantly in the bottom-right corner, instead of a Windows
-/// balloon/toast (those can arrive several seconds late or be silenced by Focus Assist). It never
-/// steals focus, auto-dismisses, closes on click, and stacks upward when several are shown.
+/// balloon/toast (those can arrive seconds late or be silenced by Focus Assist). It never steals
+/// focus, auto-dismisses, closes on click, and stacks upward when several are shown.
+/// Sizes are in logical units and scaled by the monitor DPI so text stays large and crisp.
 /// </summary>
 internal sealed class Toast : Form
 {
-    private const int Margin = 12;
-    private const int Gap = 8;
+    private const int MarginDip = 14;
+    private const int GapDip = 10;
+    private const int WidthDip = 380;
     private static readonly List<Toast> Open = new();
 
     private readonly System.Windows.Forms.Timer life = new();
+    private readonly Label messageLabel;
 
     private Toast(string title, string message, ToastLevel level, int durationMs)
     {
@@ -23,64 +26,90 @@ internal sealed class Toast : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
-        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleMode = AutoScaleMode.None; // we scale by DeviceDpi ourselves, in OnLoad
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
         BackColor = Color.FromArgb(32, 34, 40);
+        Padding = new Padding(0);
+        DoubleBuffered = true;
+
         var accent = level switch
         {
-            ToastLevel.Success => Color.FromArgb(46, 160, 67),
-            ToastLevel.Warning => Color.FromArgb(210, 153, 34),
-            ToastLevel.Error => Color.FromArgb(218, 54, 51),
-            _ => Color.FromArgb(47, 129, 247)
+            ToastLevel.Success => Color.FromArgb(63, 185, 80),
+            ToastLevel.Warning => Color.FromArgb(230, 170, 40),
+            ToastLevel.Error => Color.FromArgb(230, 70, 66),
+            _ => Color.FromArgb(70, 150, 250)
         };
 
-        var stripe = new Panel { Dock = DockStyle.Left, Width = 4, BackColor = accent };
+        var family = SystemFonts.MessageBoxFont!.FontFamily;
         var titleLabel = new Label
         {
             Text = title,
-            AutoSize = false,
-            Dock = DockStyle.Top,
-            Height = 22,
+            AutoSize = true,
             ForeColor = Color.White,
-            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 9.5f, FontStyle.Bold),
-            Padding = new Padding(12, 8, 12, 0)
+            Font = new Font(family, 12.5f, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 4),
+            UseCompatibleTextRendering = false
         };
-        var messageLabel = new Label
+        messageLabel = new Label
         {
             Text = message,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            ForeColor = Color.FromArgb(214, 218, 224),
-            Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 9f),
-            Padding = new Padding(12, 2, 12, 10)
+            AutoSize = true,
+            ForeColor = Color.FromArgb(222, 226, 232),
+            Font = new Font(family, 11f),
+            Margin = new Padding(0),
+            UseCompatibleTextRendering = false
         };
 
-        Width = 340;
-        Height = Math.Max(64, MeasureHeight(title, message));
-        Controls.Add(messageLabel);
-        Controls.Add(titleLabel);
-        Controls.Add(stripe);
+        var text = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill
+        };
+        text.Controls.Add(titleLabel);
+        text.Controls.Add(messageLabel);
 
-        foreach (Control c in new Control[] { this, stripe, titleLabel, messageLabel })
+        var stripe = new Panel { Dock = DockStyle.Left, BackColor = accent };
+
+        var container = new Panel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill };
+        container.Controls.Add(text);
+        container.Controls.Add(stripe);
+
+        Controls.Add(container);
+        this.stripe = stripe;
+        this.text = text;
+
+        foreach (var c in new Control[] { this, container, stripe, text, titleLabel, messageLabel })
             c.Click += (_, _) => Close();
 
         life.Interval = Math.Max(1000, durationMs);
         life.Tick += (_, _) => Close();
     }
 
-    private static int MeasureHeight(string title, string message)
+    private readonly Panel stripe;
+    private readonly FlowLayoutPanel text;
+
+    private int Dip(int value) => (int)Math.Round(value * DeviceDpi / 96.0);
+
+    protected override void OnLoad(EventArgs e)
     {
-        using var g = Graphics.FromHwnd(IntPtr.Zero);
-        var font = SystemFonts.MessageBoxFont!;
-        var lines = g.MeasureString(message, font, 316).Height;
-        return 30 + (int)Math.Ceiling(lines) + 12;
+        base.OnLoad(e);
+        stripe.Width = Dip(5);
+        var pad = Dip(14);
+        text.Padding = new Padding(pad, pad, pad, pad);
+        messageLabel.MaximumSize = new Size(Dip(WidthDip) - stripe.Width - pad * 2, 0);
+        MinimumSize = new Size(Dip(WidthDip), 0);
+        Reposition();
     }
 
     /// <summary>Shows a toast. Must be called on the UI thread.</summary>
-    public static void Show(string title, string message, ToastLevel level = ToastLevel.Info, int durationMs = 3000)
+    public static void Show(string title, string message, ToastLevel level = ToastLevel.Info, int durationMs = 3500)
     {
         var toast = new Toast(title, message, level, durationMs);
         Open.Add(toast);
-        toast.Reposition();
         toast.Show();
         toast.life.Start();
     }
@@ -88,13 +117,15 @@ internal sealed class Toast : Form
     private void Reposition()
     {
         var area = Screen.PrimaryScreen!.WorkingArea;
-        var y = area.Bottom - Margin - Height;
+        var margin = Dip(MarginDip);
+        var gap = Dip(GapDip);
+        var y = area.Bottom - margin - Height;
         foreach (var t in Open)
         {
             if (t == this) break;
-            y -= t.Height + Gap; // stack newer ones above older ones
+            y -= t.Height + gap; // stack newer ones above older ones
         }
-        Location = new Point(area.Right - Margin - Width, y);
+        Location = new Point(area.Right - margin - Width, y);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
