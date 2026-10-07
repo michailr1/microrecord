@@ -5,6 +5,8 @@
          Process loopback needs Windows 10 2004; that is checked at runtime (AudioSourceFactory.OpenProcessLoopback). -->
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Per-monitor DPI v2: windows (incl. toasts) render crisp instead of being bitmap-scaled by Windows. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>MicroRecord</AssemblyName>
@@ -15,7 +17,7 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <Version>1.1.0</Version>
+    <Version>1.1.2</Version>
     <Product>MicroRecord</Product>
     <Description>Portable Windows meeting recorder: microphone + system audio to one file with a hotkey.</Description>
     <Copyright>Copyright (c) 2026 michailr1. MIT License.</Copyright>
