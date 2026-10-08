@@ -32,6 +32,9 @@ internal sealed class SettingsForm : Form
     private HotkeyModifiers hotkeyModifiers;
     private Keys hotkeyKey;
 
+    private readonly TabControl tabs = new() { Dock = DockStyle.Fill };
+    private FlowLayoutPanel buttonBar = null!;
+
     private static readonly (OutputFormat Format, string Text)[] Formats =
     [
         (OutputFormat.Mp3, "MP3 — открывается везде"),
@@ -55,9 +58,8 @@ internal sealed class SettingsForm : Form
         // pixel-based control sizes do not, so text is clipped on 125/150% displays.
         AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
-ClientSize = new Size(760, 620);
+        ClientSize = new Size(760, 620);
 
-        var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(RecordingTab());
         tabs.TabPages.Add(FileTab());
         tabs.TabPages.Add(GeneralTab());
@@ -73,12 +75,34 @@ ClientSize = new Size(760, 620);
         AcceptButton = ok;
         CancelButton = cancel;
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Padding = new Padding(6) };
-        buttons.Controls.AddRange([apply, cancel, ok]);
+        buttonBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Padding = new Padding(6) };
+        buttonBar.Controls.AddRange([apply, cancel, ok]);
 
         Controls.Add(tabs);
-        Controls.Add(buttons);
+        Controls.Add(buttonBar);
         LoadValues();
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        int contentW = 0, contentH = 0;
+        foreach (TabPage page in tabs.TabPages)
+        {
+            if (page.Controls.Count == 0 || page.Controls[0] is not FlowLayoutPanel panel) continue;
+            var wasAutoScroll = panel.AutoScroll;
+            panel.AutoScroll = false;                 // so PreferredSize reports full content, not the viewport
+            var size = panel.PreferredSize;
+            panel.AutoScroll = wasAutoScroll;
+            contentW = Math.Max(contentW, size.Width);
+            contentH = Math.Max(contentH, size.Height);
+        }
+        var header = tabs.TabPages.Count > 0 ? tabs.GetTabRect(0).Bottom : 0;
+        var pad = (int)Math.Round(16 * DeviceDpi / 96.0);
+        var width = Math.Max(ClientSize.Width, contentW + SystemInformation.VerticalScrollBarWidth + pad);
+        var height = contentH + header + buttonBar.Height + pad;
+        ClientSize = new Size(width, height);
+        CenterToScreen();
     }
 
     private static NumericUpDown Percent() => new() { Minimum = 0, Maximum = 200, Increment = 5, Width = 80 };
