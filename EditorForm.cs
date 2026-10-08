@@ -36,7 +36,7 @@ internal sealed class EditorForm : Form
         // pixel-based control sizes do not, so text is clipped on 125/150% displays.
         AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(500, 430);
+        ClientSize = new Size(560, 460);
 
         splitSize.Value = Math.Clamp(settings.SplitSizeMb, 1, 2000);
 
@@ -54,13 +54,12 @@ internal sealed class EditorForm : Form
 
         Add(Caption("Обрезать по времени"));
         Add(Hint("Формат чч:мм:сс. Сохраняется копия с суффиксом _trim, исходный файл не меняется."));
-        Add(Row(new Label { Text = "С", Width = 20, TextAlign = ContentAlignment.MiddleLeft }, trimStart,
-                new Label { Text = "  по", Width = 36, TextAlign = ContentAlignment.MiddleLeft }, trimEnd));
+        Add(Row(RowLabel("С"), trimStart, RowLabel("по"), trimEnd));
         Add(trimButton, 16);
 
         Add(Caption("Разбить на части по размеру"));
         Add(Hint("Для загрузки на транскрибацию (у OpenAI Whisper лимит 25 МБ). Части режутся по времени, размер — приблизительный."));
-        Add(Row(new Label { Text = "Размер части, МБ", Width = 120, TextAlign = ContentAlignment.MiddleLeft }, splitSize));
+        Add(Row(RowLabel("Размер части, МБ"), splitSize));
         Add(splitButton, 16);
 
         Add(result);
@@ -70,6 +69,7 @@ internal sealed class EditorForm : Form
     }
 
     private static MaskedTextBox Time() => new() { Mask = "00:00:00", Width = 80, ValidatingType = typeof(DateTime) };
+    private static Label RowLabel(string t) => new() { Text = t, AutoSize = true, Margin = new Padding(0, 6, 8, 0) };
     private static Label Caption(string t) => new() { Text = t, AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
     private static Label Hint(string t) => new() { Text = t, AutoSize = true, MaximumSize = new Size(460, 0), ForeColor = SystemColors.GrayText };
 

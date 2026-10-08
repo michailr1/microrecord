@@ -57,7 +57,7 @@ internal sealed class SettingsForm : Form
         // pixel-based control sizes do not, so text is clipped on 125/150% displays.
         AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(520, 470);
+        ClientSize = new Size(600, 500);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(RecordingTab());
@@ -110,6 +110,8 @@ internal sealed class SettingsForm : Form
         return row;
     }
 
+    // AutoSize label for a row: never clips regardless of DPI/font, with a little right/top spacing.
+    private static Label RowLabel(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(0, 6, 10, 0) };
     private static Label Caption(string text) => new() { Text = text, AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold) };
     private static Label Hint(string text) => new() { Text = text, AutoSize = true, MaximumSize = new Size(470, 0), ForeColor = SystemColors.GrayText };
 
@@ -122,8 +124,8 @@ internal sealed class SettingsForm : Form
 
         return Page("Запись",
             Caption("Громкость"),
-            Row(new Label { Text = "Микрофон", Width = 120 }, micVolume, micVolumeText),
-            Row(new Label { Text = "Системный звук", Width = 120 }, systemVolume, systemVolumeText),
+            Row(RowLabel("Микрофон"), micVolume, micVolumeText),
+            Row(RowLabel("Системный звук"), systemVolume, systemVolumeText),
             Caption("Микрофон"),
             micMode,
             Hint("Если антивирус (например, Kaspersky) не даёт программам открывать микрофон, его пишет вкладка вашего браузера. Вкладку нельзя закрывать во время записи."),
@@ -151,16 +153,16 @@ internal sealed class SettingsForm : Form
         return Page("Файл",
             Caption("Формат"),
             format,
-            Row(new Label { Text = "Битрейт", Width = 80 }, bitrate),
+            Row(RowLabel("Битрейт"), bitrate),
             sizeEstimate,
             Hint("Во время записи пишется временный WAV, после остановки он сжимается встроенными кодеками Windows. Если сжать не удалось, остаётся WAV."),
             Caption("Сохранение"),
             Row(folder, browse),
-            Row(new Label { Text = "Имя файла", Width = 80 }, fileNameTemplate),
+            Row(RowLabel("Имя файла"), fileNameTemplate),
             Hint("{date} — дата (20261006), {time} — время (191154)."),
             openFolderAfter,
             Caption("Разбивка на части"),
-            Row(new Label { Text = "Размер части по умолчанию, МБ", Width = 200, TextAlign = ContentAlignment.MiddleLeft }, splitSize),
+            Row(RowLabel("Размер части по умолчанию, МБ"), splitSize),
             Hint("Используется в окне «Обработка записи». Для транскрибации удобно держать части меньше лимита сервиса (у OpenAI Whisper — 25 МБ)."));
     }
 
