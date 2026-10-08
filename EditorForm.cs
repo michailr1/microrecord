@@ -32,6 +32,9 @@ internal sealed class EditorForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+        // Baseline 96 DPI: without this, point-based fonts grow with the monitor scale but
+        // pixel-based control sizes do not, so text is clipped on 125/150% displays.
+        AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(500, 430);
 
