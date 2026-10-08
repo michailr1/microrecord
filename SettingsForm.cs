@@ -86,6 +86,7 @@ internal sealed class SettingsForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        foreach (var combo in new[] { micMode, format, bitrate }) SizeComboToContent(combo);
         int contentW = 0, contentH = 0;
         foreach (TabPage page in tabs.TabPages)
         {
@@ -107,6 +108,17 @@ internal sealed class SettingsForm : Form
 
     private static NumericUpDown Percent() => new() { Minimum = 0, Maximum = 200, Increment = 5, Width = 80 };
     private static ComboBox DropDown() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
+
+    /// <summary>Widens a combo so the longest item is fully visible both closed and open, at any DPI.</summary>
+    private void SizeComboToContent(ComboBox combo)
+    {
+        var width = 0;
+        foreach (var item in combo.Items)
+            width = Math.Max(width, TextRenderer.MeasureText(item?.ToString() ?? "", combo.Font).Width);
+        width += SystemInformation.VerticalScrollBarWidth + (int)Math.Round(24 * DeviceDpi / 96.0);
+        combo.Width = width;
+        combo.DropDownWidth = width;
+    }
 
     private static TabPage Page(string title, params Control[] rows)
     {
@@ -139,7 +151,7 @@ internal sealed class SettingsForm : Form
 
     private TabPage RecordingTab()
     {
-        micMode.Items.AddRange(["Автоматически (сначала Windows, затем вкладка браузера)", "Сразу через вкладку браузера"]);
+        micMode.Items.AddRange(["Автоматически", "Через вкладку браузера"]);
         testButton.Click += async (_, _) => await RunTest();
 
         return Page("Запись",
@@ -149,7 +161,7 @@ internal sealed class SettingsForm : Form
             Row(RowLabel("Системный звук"), systemVolume, RowLabel("%")),
             Caption("Микрофон"),
             micMode,
-            Hint("Если антивирус (например, Kaspersky) не даёт программам открывать микрофон, его пишет вкладка вашего браузера. Вкладку нельзя закрывать во время записи."),
+            Hint("«Автоматически» — сначала обычный способ Windows, затем вкладка браузера. Если антивирус (например, Kaspersky) не даёт программам открывать микрофон, его пишет вкладка браузера — её нельзя закрывать во время записи."),
             autoGain,
             noiseSuppression,
             Caption("Дорожки"),
