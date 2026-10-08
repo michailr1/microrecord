@@ -17,7 +17,7 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <Version>1.1.4</Version>
+    <Version>1.1.5</Version>
     <Product>MicroRecord</Product>
     <Description>Portable Windows meeting recorder: microphone + system audio to one file with a hotkey.</Description>
     <Copyright>Copyright (c) 2026 michailr1. MIT License.</Copyright>
