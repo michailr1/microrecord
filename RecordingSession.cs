@@ -77,15 +77,20 @@ internal sealed class RecordingSession : IDisposable
         {
             var isMic = source == micSource;
             var volume = (isMic ? settings.MicVolumePercent : settings.SystemVolumePercent) / 100f;
-            var input = mixer.AddInput(source.WaveFormat, p => split
+            // Hand the mixer a mono feed at the source's own rate: the built-in mixer can only convert
+            // 1<->2 channels, so a 4-channel (or any multi-channel) endpoint would otherwise throw
+            // "No channel conversion from N to 2 channels". We down-mix to mono ourselves first.
+            var monoFormat = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 1);
+            var input = mixer.AddInput(monoFormat, p => split
                 ? new ChannelRouter(p, toLeft: isMic, volume)
                 : new VolumeSampleProvider(p) { Volume = volume });
+            var downmix = new MonoDownmix(source.WaveFormat);
             var meter = new LevelMeter(isMic ? "mic" : "system", source.WaveFormat, log);
             meters.Add(meter);
             source.Sink = data =>
             {
                 meter.Add(data);
-                input.AddSamples(data);
+                input.AddSamples(downmix.ToMonoFloat(data));
             };
         }
 
@@ -175,7 +180,56 @@ internal sealed class RecordingSession : IDisposable
     }
 }
 
-/// <summary>Downmixes a stereo input to mono and puts it on one side of a stereo output.</summary>
+/// <summary>
+/// Converts captured bytes (IEEE float or 16-bit PCM, any channel count) into mono IEEE-float bytes
+/// by averaging channels, so every source reaches the mixer as mono regardless of the device layout.
+/// </summary>
+internal sealed class MonoDownmix
+{
+    private readonly int channels;
+    private readonly bool isFloat;
+
+    public MonoDownmix(WaveFormat format)
+    {
+        channels = Math.Max(1, format.Channels);
+        isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat
+                  || (format.Encoding == WaveFormatEncoding.Extensible && format.BitsPerSample == 32);
+        if (!isFloat && format.BitsPerSample != 16)
+            throw new NotSupportedException($"Unsupported capture format: {format}");
+    }
+
+    public ReadOnlySpan<byte> ToMonoFloat(ReadOnlySpan<byte> data)
+    {
+        float[] mono;
+        if (isFloat)
+        {
+            var src = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(data);
+            var frames = src.Length / channels;
+            mono = new float[frames];
+            for (var i = 0; i < frames; i++)
+            {
+                float sum = 0;
+                for (var c = 0; c < channels; c++) sum += src[i * channels + c];
+                mono[i] = sum / channels;
+            }
+        }
+        else
+        {
+            var src = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(data);
+            var frames = src.Length / channels;
+            mono = new float[frames];
+            for (var i = 0; i < frames; i++)
+            {
+                int sum = 0;
+                for (var c = 0; c < channels; c++) sum += src[i * channels + c];
+                mono[i] = sum / (float)channels / 32768f;
+            }
+        }
+        return System.Runtime.InteropServices.MemoryMarshal.AsBytes<float>(mono);
+    }
+}
+
+/// <summary>Puts a (mono, duplicated to stereo by the mixer) input on one side of a stereo output.</summary>
 internal sealed class ChannelRouter : ISampleProvider
 {
     private readonly ISampleProvider source;
