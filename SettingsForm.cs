@@ -6,10 +6,8 @@ internal sealed class SettingsForm : Form
     private readonly AppSettings settings;
     private readonly MicroRecordContext app;
 
-    private readonly TrackBar micVolume = Slider();
-    private readonly TrackBar systemVolume = Slider();
-    private readonly Label micVolumeText = new() { AutoSize = true };
-    private readonly Label systemVolumeText = new() { AutoSize = true };
+    private readonly NumericUpDown micVolume = Percent();
+    private readonly NumericUpDown systemVolume = Percent();
     private readonly CheckBox autoGain = new() { Text = "Автоусиление микрофона (браузер)", AutoSize = true };
     private readonly CheckBox noiseSuppression = new() { Text = "Шумоподавление (браузер)", AutoSize = true };
     private readonly ComboBox micMode = DropDown();
@@ -57,7 +55,7 @@ internal sealed class SettingsForm : Form
         // pixel-based control sizes do not, so text is clipped on 125/150% displays.
         AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(600, 500);
+ClientSize = new Size(760, 620);
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.Add(RecordingTab());
@@ -83,7 +81,7 @@ internal sealed class SettingsForm : Form
         LoadValues();
     }
 
-    private static TrackBar Slider() => new() { Minimum = 0, Maximum = 200, TickFrequency = 25, SmallChange = 5, LargeChange = 10, Width = 300 };
+    private static NumericUpDown Percent() => new() { Minimum = 0, Maximum = 200, Increment = 5, Width = 80 };
     private static ComboBox DropDown() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
 
     private static TabPage Page(string title, params Control[] rows)
@@ -117,15 +115,14 @@ internal sealed class SettingsForm : Form
 
     private TabPage RecordingTab()
     {
-        micVolume.ValueChanged += (_, _) => micVolumeText.Text = $"{micVolume.Value}%";
-        systemVolume.ValueChanged += (_, _) => systemVolumeText.Text = $"{systemVolume.Value}%";
         micMode.Items.AddRange(["Автоматически (сначала Windows, затем вкладка браузера)", "Сразу через вкладку браузера"]);
         testButton.Click += async (_, _) => await RunTest();
 
         return Page("Запись",
-            Caption("Громкость"),
-            Row(RowLabel("Микрофон"), micVolume, micVolumeText),
-            Row(RowLabel("Системный звук"), systemVolume, systemVolumeText),
+            Caption("Громкость, %"),
+            Hint("100 % — без изменений, больше — громче, меньше — тише. Можно вводить число или менять стрелками."),
+            Row(RowLabel("Микрофон"), micVolume, RowLabel("%")),
+            Row(RowLabel("Системный звук"), systemVolume, RowLabel("%")),
             Caption("Микрофон"),
             micMode,
             Hint("Если антивирус (например, Kaspersky) не даёт программам открывать микрофон, его пишет вкладка вашего браузера. Вкладку нельзя закрывать во время записи."),
@@ -220,8 +217,6 @@ internal sealed class SettingsForm : Form
     {
         micVolume.Value = Math.Clamp(settings.MicVolumePercent, 0, 200);
         systemVolume.Value = Math.Clamp(settings.SystemVolumePercent, 0, 200);
-        micVolumeText.Text = $"{micVolume.Value}%";
-        systemVolumeText.Text = $"{systemVolume.Value}%";
         autoGain.Checked = settings.BrowserAutoGain;
         noiseSuppression.Checked = settings.BrowserNoiseSuppression;
         micMode.SelectedIndex = settings.MicMode == MicMode.BrowserOnly ? 1 : 0;
@@ -278,8 +273,8 @@ internal sealed class SettingsForm : Form
     private AppSettings CollectValues()
     {
         var result = settings.Clone();
-        result.MicVolumePercent = micVolume.Value;
-        result.SystemVolumePercent = systemVolume.Value;
+        result.MicVolumePercent = (int)micVolume.Value;
+        result.SystemVolumePercent = (int)systemVolume.Value;
         result.BrowserAutoGain = autoGain.Checked;
         result.BrowserNoiseSuppression = noiseSuppression.Checked;
         result.MicMode = micMode.SelectedIndex == 1 ? MicMode.BrowserOnly : MicMode.Auto;
