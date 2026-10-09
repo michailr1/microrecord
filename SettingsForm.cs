@@ -243,9 +243,19 @@ internal sealed class SettingsForm : Form
         var link = new LinkLabel { Text = AppSettings.GitHubUrl, AutoSize = true };
         link.LinkClicked += (_, _) => MicroRecordContext.OpenUrl(AppSettings.GitHubUrl);
 
+        var update = new Button { Text = "Проверить обновления", AutoSize = true };
+        update.Click += async (_, _) =>
+        {
+            update.Enabled = false;
+            try { await app.CheckForUpdates(); }
+            finally { update.Enabled = true; }
+        };
+
         return Page("О программе",
             Row(icon, title),
             Hint("Портативный рекордер встреч для Windows: одна горячая клавиша — и микрофон вместе со звуком собеседников пишутся в один файл. Без облака, без телеметрии, без установки."),
+            update,
+            Hint("Скачивает последнюю версию с GitHub, проверяет контрольную сумму, заменяет программу и перезапускает — как команда install.ps1."),
             link);
     }
 
