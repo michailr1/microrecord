@@ -17,6 +17,7 @@ internal static class Program
             return;
         }
         RemoveDownloadMark();
+        Updater.CleanupAfterUpdate();
         ApplicationConfiguration.Initialize();
         Application.Run(new MicroRecordContext());
     }
@@ -82,6 +83,7 @@ internal sealed class MicroRecordContext : ApplicationContext
         menu.Items.Add("Обработка записи…", null, (_, _) => ShowEditor(null));
         menu.Items.Add("Настройки…", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Проверить обновления", null, (_, _) => CheckForUpdates());
         menu.Items.Add("MicroRecord на GitHub", null, (_, _) => OpenUrl(AppSettings.GitHubUrl));
         menu.Items.Add("Выход", null, (_, _) => ExitApp());
 
@@ -295,6 +297,37 @@ internal sealed class MicroRecordContext : ApplicationContext
     }
 
     private static void SelectInExplorer(string path) => Process.Start("explorer.exe", $"/select,\"{path}\"");
+
+    private bool updating;
+
+    /// <summary>Runs the updater, surfacing progress as toasts. Shared by the tray menu and Settings.</summary>
+    public async Task CheckForUpdates()
+    {
+        if (updating) return;
+        if (session != null)
+        {
+            Toast.Show("Обновление", "Остановите запись перед обновлением.", ToastLevel.Warning);
+            return;
+        }
+        updating = true;
+        try
+        {
+            var started = await Updater.UpdateAsync(msg => Toast.Show("Обновление", msg), Log);
+            if (started)
+            {
+                hotkeyWindow.Dispose();
+                tray.Visible = false;
+                tray.Dispose();
+                ExitThread();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("update error: " + ex);
+            Toast.Show("Обновление не удалось", ex.Message, ToastLevel.Error, 6000);
+        }
+        finally { updating = false; }
+    }
 
     public static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 

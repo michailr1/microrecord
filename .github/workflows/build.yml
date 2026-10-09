@@ -49,11 +49,11 @@ jobs:
 
       # Full build: .NET runtime bundled and compressed into the EXE. Runs anywhere.
       - name: Publish self-contained EXE
-        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/full
+        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ steps.version.outputs.version }} -p:Flavor=full -o publish/full
 
       # Small build: needs the .NET 9 Desktop Runtime installed (Windows offers the download if it is missing).
       - name: Publish framework-dependent EXE
-        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o publish/small
+        run: dotnet publish MicroRecord.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -p:Flavor=small -o publish/small
 
       - name: Collect release files
         shell: pwsh
