@@ -34,12 +34,12 @@ internal sealed class RecordingSession : IDisposable
 
     public IReadOnlyList<LevelMeter> Meters => meters;
 
-    public RecordingSession(string outputDir, AppSettings settings, Action<string> logger)
+    public RecordingSession(string outputDir, AppSettings settings, Action<string> logger, string? name = null)
     {
         log = logger;
         this.settings = settings;
         Directory.CreateDirectory(outputDir);
-        var baseName = settings.BuildFileName(DateTime.Now);
+        var baseName = string.IsNullOrWhiteSpace(name) ? settings.BuildFileName(DateTime.Now) : AppSettings.Sanitize(name);
         OutputPath = UniquePath(Path.Combine(outputDir, baseName), AppSettings.Extension(settings.Format));
         TempWavPath = Path.ChangeExtension(OutputPath, ".recording.wav");
     }

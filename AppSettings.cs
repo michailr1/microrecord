@@ -33,6 +33,7 @@ internal sealed class AppSettings
     public int BitrateKbps { get; set; } = 128;
     public string OutputFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "MicroRecord");
     public string FileNameTemplate { get; set; } = "meeting_{date}_{time}";
+    public bool PromptForName { get; set; } = true;
     public bool OpenFolderAfterRecording { get; set; }
 
     // Auto-stop and splitting
@@ -92,10 +93,16 @@ internal sealed class AppSettings
     };
 
     public string BuildFileName(DateTime now) =>
-        string.Join("_", FileNameTemplate
+        Sanitize(FileNameTemplate
             .Replace("{date}", now.ToString("yyyyMMdd"))
-            .Replace("{time}", now.ToString("HHmmss"))
-            .Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            .Replace("{time}", now.ToString("HHmmss")));
+
+    /// <summary>Drops characters a file name cannot contain, collapsing them to spaces.</summary>
+    public static string Sanitize(string name)
+    {
+        var cleaned = string.Join(" ", name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+        return cleaned.Length == 0 ? "meeting" : cleaned;
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
