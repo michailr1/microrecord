@@ -131,10 +131,16 @@ internal sealed class MicroRecordContext : ApplicationContext
 
     private void StartRecording()
     {
+        string? name = null;
+        if (settings.PromptForName)
+        {
+            name = NameDialog.Ask(DateTime.Now.ToString("yyyy-MM-dd HH-mm") + " ");
+            if (name == null) return; // user cancelled — don't start
+        }
         busy = true;
         try
         {
-            session = new RecordingSession(settings.OutputFolder, settings.Clone(), Log);
+            session = new RecordingSession(settings.OutputFolder, settings.Clone(), Log, name);
             tray.Text = "MicroRecord — запуск…";
             session.Start();
             tray.Icon = AppIcons.Recording;

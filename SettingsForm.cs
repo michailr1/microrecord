@@ -21,6 +21,7 @@ internal sealed class SettingsForm : Form
     private readonly TextBox folder = new() { Width = 300 };
     private readonly TextBox fileNameTemplate = new() { Width = 300 };
     private readonly CheckBox openFolderAfter = new() { Text = "Показать файл в проводнике после записи", AutoSize = true };
+    private readonly CheckBox promptForName = new() { Text = "Спрашивать название перед началом записи", AutoSize = true };
 
     private readonly TextBox hotkey = new() { Width = 200, ReadOnly = true, BackColor = SystemColors.Window };
     private readonly CheckBox startWithWindows = new() { Text = "Запускать вместе с Windows", AutoSize = true };
@@ -193,6 +194,7 @@ internal sealed class SettingsForm : Form
             Row(folder, browse),
             Row(RowLabel("Имя файла"), fileNameTemplate),
             Hint("{date} — дата (20261006), {time} — время (191154)."),
+            promptForName,
             openFolderAfter,
             Caption("Разбивка на части"),
             Row(RowLabel("Размер части по умолчанию, МБ"), splitSize),
@@ -273,6 +275,7 @@ internal sealed class SettingsForm : Form
         folder.Text = settings.OutputFolder;
         fileNameTemplate.Text = settings.FileNameTemplate;
         openFolderAfter.Checked = settings.OpenFolderAfterRecording;
+        promptForName.Checked = settings.PromptForName;
 
         hotkeyModifiers = settings.HotkeyModifiers;
         hotkeyKey = settings.HotkeyKey;
@@ -330,6 +333,7 @@ internal sealed class SettingsForm : Form
         result.OutputFolder = folder.Text.Trim();
         result.FileNameTemplate = string.IsNullOrWhiteSpace(fileNameTemplate.Text) ? "meeting_{date}_{time}" : fileNameTemplate.Text.Trim();
         result.OpenFolderAfterRecording = openFolderAfter.Checked;
+        result.PromptForName = promptForName.Checked;
         result.HotkeyModifiers = hotkeyModifiers;
         result.HotkeyKey = hotkeyKey;
         result.PlaySounds = playSounds.Checked;
