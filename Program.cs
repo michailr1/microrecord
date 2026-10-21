@@ -97,7 +97,14 @@ internal sealed class MicroRecordContext : ApplicationContext
 
         autoStopTimer.Tick += (_, _) => AutoStop();
 
-        hotkeyWindow = new HotkeyWindow(ToggleRecording);
+        // Defer the hotkey action out of the WM_HOTKEY handler: opening a modal dialog (the name
+        // prompt) directly inside it blocks the message pump and the next hotkey press is lost.
+        var ui = SynchronizationContext.Current;
+        hotkeyWindow = new HotkeyWindow(() =>
+        {
+            if (ui != null) ui.Post(_ => ToggleRecording(), null);
+            else ToggleRecording();
+        });
         RegisterHotkey(showError: true);
         SetIdleState();
         Toast.Show("MicroRecord", $"Готов. {settings.HotkeyText} — начать запись.");
