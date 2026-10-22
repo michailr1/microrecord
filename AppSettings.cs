@@ -26,6 +26,8 @@ internal sealed class AppSettings
     public bool BrowserAutoGain { get; set; } = true;
     public bool BrowserNoiseSuppression { get; set; } = true;
     public bool BrowserEchoCancellation { get; set; } = true;
+    public bool NoiseGateEnabled { get; set; }
+    public int NoiseGateThresholdDb { get; set; } = -45;
     public MicMode MicMode { get; set; } = MicMode.Auto;
     public bool SplitTracks { get; set; } = true;
 

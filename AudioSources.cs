@@ -95,7 +95,7 @@ internal static class AudioSourceFactory
     public static IAudioSource OpenMicrophone(AppSettings settings, Action<string> log)
     {
         var browser = ("default browser tab getUserMedia", (Func<IAudioSource>)(() =>
-            new BrowserMicSource(log, settings.BrowserAutoGain, settings.BrowserNoiseSuppression, settings.BrowserEchoCancellation)));
+            new BrowserMicSource(log, settings.BrowserAutoGain, settings.BrowserNoiseSuppression, settings.BrowserEchoCancellation, settings.NoiseGateEnabled, settings.NoiseGateThresholdDb)));
         if (settings.MicMode == MicMode.BrowserOnly) return OpenFirst("mic", log, [browser]);
         return OpenFirst("mic", log,
     [
