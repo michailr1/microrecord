@@ -25,6 +25,7 @@ internal sealed class AppSettings
     public int SystemVolumePercent { get; set; } = 70;
     public bool BrowserAutoGain { get; set; } = true;
     public bool BrowserNoiseSuppression { get; set; } = true;
+    public bool BrowserEchoCancellation { get; set; } = true;
     public MicMode MicMode { get; set; } = MicMode.Auto;
     public bool SplitTracks { get; set; } = true;
 
