@@ -17,7 +17,7 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <Flavor Condition="'$(Flavor)' == ''">full</Flavor>
     <Product>MicroRecord</Product>
     <Description>Portable Windows meeting recorder: microphone + system audio to one file with a hotkey.</Description>

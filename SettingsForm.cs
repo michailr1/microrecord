@@ -11,6 +11,8 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox autoGain = new() { Text = "Автоусиление микрофона (браузер)", AutoSize = true };
     private readonly CheckBox noiseSuppression = new() { Text = "Шумоподавление (браузер)", AutoSize = true };
     private readonly CheckBox echoCancellation = new() { Text = "Эхоподавление — убирать звук встречи из микрофона (браузер)", AutoSize = true };
+    private readonly CheckBox noiseGate = new() { Text = "Шумовой порог — писать микрофон только когда вы говорите", AutoSize = true };
+    private readonly NumericUpDown noiseGateThreshold = new() { Minimum = -70, Maximum = -20, Increment = 1, Width = 80 };
     private readonly ComboBox micMode = DropDown();
     private readonly CheckBox splitTracks = new() { Text = "Раздельные дорожки: слева микрофон, справа собеседники", AutoSize = true };
     private readonly Button testButton = new() { Text = "Тест 5 секунд", AutoSize = true };
@@ -167,6 +169,9 @@ internal sealed class SettingsForm : Form
             autoGain,
             noiseSuppression,
             echoCancellation,
+            noiseGate,
+            Row(RowLabel("Порог срабатывания, дБ"), noiseGateThreshold),
+            Hint("Тише порога — микрофон молчит (уходит фон опенспейса). Громче — пишется. По умолчанию −45 дБ: если обрезает ваш голос — уменьшите число (−55), если проходит фон — увеличьте (−35). Лучше работает с выключенным автоусилением."),
             Caption("Дорожки"),
             splitTracks,
             Hint("Громкость себя и собеседников потом можно поправить отдельно в любом редакторе; расшифровщикам проще отличать говорящих."),
@@ -270,6 +275,8 @@ internal sealed class SettingsForm : Form
         autoGain.Checked = settings.BrowserAutoGain;
         noiseSuppression.Checked = settings.BrowserNoiseSuppression;
         echoCancellation.Checked = settings.BrowserEchoCancellation;
+        noiseGate.Checked = settings.NoiseGateEnabled;
+        noiseGateThreshold.Value = Math.Clamp(settings.NoiseGateThresholdDb, -70, -20);
         micMode.SelectedIndex = settings.MicMode == MicMode.BrowserOnly ? 1 : 0;
         splitTracks.Checked = settings.SplitTracks;
 
@@ -330,6 +337,8 @@ internal sealed class SettingsForm : Form
         result.BrowserAutoGain = autoGain.Checked;
         result.BrowserNoiseSuppression = noiseSuppression.Checked;
         result.BrowserEchoCancellation = echoCancellation.Checked;
+        result.NoiseGateEnabled = noiseGate.Checked;
+        result.NoiseGateThresholdDb = (int)noiseGateThreshold.Value;
         result.MicMode = micMode.SelectedIndex == 1 ? MicMode.BrowserOnly : MicMode.Auto;
         result.SplitTracks = splitTracks.Checked;
         result.Format = SelectedFormat;

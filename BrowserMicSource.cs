@@ -36,13 +36,17 @@ internal sealed class BrowserMicSource : IAudioSource
     private readonly bool autoGain;
     private readonly bool noiseSuppression;
     private readonly bool echoCancellation;
+    private readonly bool gate;
+    private readonly int gateThresholdDb;
 
-    public BrowserMicSource(Action<string> log, bool autoGain, bool noiseSuppression, bool echoCancellation)
+    public BrowserMicSource(Action<string> log, bool autoGain, bool noiseSuppression, bool echoCancellation, bool gate, int gateThresholdDb)
     {
         this.log = log;
         this.autoGain = autoGain;
         this.noiseSuppression = noiseSuppression;
         this.echoCancellation = echoCancellation;
+        this.gate = gate;
+        this.gateThresholdDb = gateThresholdDb;
     }
 
     public string Name => "browser tab getUserMedia";
@@ -65,7 +69,7 @@ internal sealed class BrowserMicSource : IAudioSource
         port = ((IPEndPoint)listener.LocalEndpoint).Port;
         _ = Task.Run(AcceptLoop);
 
-        var url = $"http://127.0.0.1:{port}/?t={token}&agc={(autoGain ? 1 : 0)}&ns={(noiseSuppression ? 1 : 0)}&ec={(echoCancellation ? 1 : 0)}";
+        var url = $"http://127.0.0.1:{port}/?t={token}&agc={(autoGain ? 1 : 0)}&ns={(noiseSuppression ? 1 : 0)}&ec={(echoCancellation ? 1 : 0)}&gate={(gate ? 1 : 0)}&gthr={gateThresholdDb}";
         log($"mic: opening {url} in the default browser");
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
@@ -239,11 +243,31 @@ ws.binaryType = 'arraybuffer';
 let ctx, stream;
 const worklet = `
 class Pcm extends AudioWorkletProcessor {
-  constructor() { super(); this.size = Math.round(sampleRate / 10); this.buf = new Int16Array(this.size); this.n = 0; }
+  constructor(options) {
+    super();
+    const o = (options && options.processorOptions) || {};
+    this.size = Math.round(sampleRate / 10);
+    this.buf = new Int16Array(this.size); this.n = 0;
+    this.gate = !!o.gate;
+    this.thr = Math.pow(10, (o.thresholdDb ?? -45) / 20); // open threshold, linear amplitude
+    this.open = this.thr * 0.5;                            // close a bit lower (hysteresis)
+    this.holdMax = Math.round(sampleRate * 0.4);           // keep open 400 ms after last sound
+    this.env = 0; this.gainv = 0; this.hold = 0;
+  }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0];
     if (ch) for (let i = 0; i < ch.length; i++) {
-      const s = Math.max(-1, Math.min(1, ch[i]));
+      let x = ch[i];
+      if (this.gate) {
+        this.env = Math.max(Math.abs(x), this.env * 0.9994);       // peak follower with slow decay
+        if (this.env > this.thr) this.hold = this.holdMax;
+        else if (this.env < this.open && this.hold > 0) this.hold--;
+        const target = this.hold > 0 ? 1 : 0;
+        const coeff = target > this.gainv ? 0.02 : 0.0012;         // fast open, slow close (no clicks)
+        this.gainv += (target - this.gainv) * coeff;
+        x *= this.gainv;
+      }
+      const s = Math.max(-1, Math.min(1, x));
       this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
       if (this.n === this.size) { this.port.postMessage(this.buf.buffer, [this.buf.buffer]); this.buf = new Int16Array(this.size); this.n = 0; } // a transferred buffer leaves buf.length === 0
     }
@@ -263,7 +287,10 @@ ws.onopen = async () => {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: params.get('ec') === '1', noiseSuppression: params.get('ns') === '1', autoGainControl: params.get('agc') === '1', channelCount: 1 } });
     ctx = new AudioContext();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' })));
-    const node = new AudioWorkletNode(ctx, 'pcm', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
+    const node = new AudioWorkletNode(ctx, 'pcm', {
+      numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit',
+      processorOptions: { gate: params.get('gate') === '1', thresholdDb: parseFloat(params.get('gthr') || '-45') }
+    });
     node.port.onmessage = e => {
       const pcm = new Int16Array(e.data); let peak = 0;
       for (let i = 0; i < pcm.length; i++) peak = Math.max(peak, Math.abs(pcm[i]));
