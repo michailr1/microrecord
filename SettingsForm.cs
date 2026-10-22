@@ -10,6 +10,7 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown systemVolume = Percent();
     private readonly CheckBox autoGain = new() { Text = "Автоусиление микрофона (браузер)", AutoSize = true };
     private readonly CheckBox noiseSuppression = new() { Text = "Шумоподавление (браузер)", AutoSize = true };
+    private readonly CheckBox echoCancellation = new() { Text = "Эхоподавление — убирать звук встречи из микрофона (браузер)", AutoSize = true };
     private readonly ComboBox micMode = DropDown();
     private readonly CheckBox splitTracks = new() { Text = "Раздельные дорожки: слева микрофон, справа собеседники", AutoSize = true };
     private readonly Button testButton = new() { Text = "Тест 5 секунд", AutoSize = true };
@@ -165,6 +166,7 @@ internal sealed class SettingsForm : Form
             Hint("«Автоматически» — сначала обычный способ Windows, затем вкладка браузера. Если антивирус (например, Kaspersky) не даёт программам открывать микрофон, его пишет вкладка браузера — её нельзя закрывать во время записи."),
             autoGain,
             noiseSuppression,
+            echoCancellation,
             Caption("Дорожки"),
             splitTracks,
             Hint("Громкость себя и собеседников потом можно поправить отдельно в любом редакторе; расшифровщикам проще отличать говорящих."),
@@ -267,6 +269,7 @@ internal sealed class SettingsForm : Form
         systemVolume.Value = Math.Clamp(settings.SystemVolumePercent, 0, 200);
         autoGain.Checked = settings.BrowserAutoGain;
         noiseSuppression.Checked = settings.BrowserNoiseSuppression;
+        echoCancellation.Checked = settings.BrowserEchoCancellation;
         micMode.SelectedIndex = settings.MicMode == MicMode.BrowserOnly ? 1 : 0;
         splitTracks.Checked = settings.SplitTracks;
 
@@ -326,6 +329,7 @@ internal sealed class SettingsForm : Form
         result.SystemVolumePercent = (int)systemVolume.Value;
         result.BrowserAutoGain = autoGain.Checked;
         result.BrowserNoiseSuppression = noiseSuppression.Checked;
+        result.BrowserEchoCancellation = echoCancellation.Checked;
         result.MicMode = micMode.SelectedIndex == 1 ? MicMode.BrowserOnly : MicMode.Auto;
         result.SplitTracks = splitTracks.Checked;
         result.Format = SelectedFormat;

@@ -35,12 +35,14 @@ internal sealed class BrowserMicSource : IAudioSource
 
     private readonly bool autoGain;
     private readonly bool noiseSuppression;
+    private readonly bool echoCancellation;
 
-    public BrowserMicSource(Action<string> log, bool autoGain, bool noiseSuppression)
+    public BrowserMicSource(Action<string> log, bool autoGain, bool noiseSuppression, bool echoCancellation)
     {
         this.log = log;
         this.autoGain = autoGain;
         this.noiseSuppression = noiseSuppression;
+        this.echoCancellation = echoCancellation;
     }
 
     public string Name => "browser tab getUserMedia";
@@ -63,7 +65,7 @@ internal sealed class BrowserMicSource : IAudioSource
         port = ((IPEndPoint)listener.LocalEndpoint).Port;
         _ = Task.Run(AcceptLoop);
 
-        var url = $"http://127.0.0.1:{port}/?t={token}&agc={(autoGain ? 1 : 0)}&ns={(noiseSuppression ? 1 : 0)}";
+        var url = $"http://127.0.0.1:{port}/?t={token}&agc={(autoGain ? 1 : 0)}&ns={(noiseSuppression ? 1 : 0)}&ec={(echoCancellation ? 1 : 0)}";
         log($"mic: opening {url} in the default browser");
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
@@ -258,7 +260,7 @@ ws.onmessage = e => { if (e.data === 'stop') stopCapture('Запись оста�
 ws.onclose = () => stopCapture('Соединение с MicroRecord закрыто. Вкладку можно закрыть.');
 ws.onopen = async () => {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: params.get('ns') === '1', autoGainControl: params.get('agc') === '1', channelCount: 1 } });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: params.get('ec') === '1', noiseSuppression: params.get('ns') === '1', autoGainControl: params.get('agc') === '1', channelCount: 1 } });
     ctx = new AudioContext();
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: 'application/javascript' })));
     const node = new AudioWorkletNode(ctx, 'pcm', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' });
